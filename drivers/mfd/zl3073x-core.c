@@ -8,6 +8,7 @@
 #include <linux/mfd/zl3073x.h>
 #include <linux/module.h>
 #include <linux/regmap.h>
+#include <net/devlink.h>
 #include "zl3073x.h"
 
 /*
@@ -51,16 +52,38 @@ const struct regmap_config *zl3073x_get_regmap_config(void)
 }
 EXPORT_SYMBOL_NS_GPL(zl3073x_get_regmap_config, "ZL3073X");
 
+static const struct devlink_ops zl3073x_devlink_ops = {
+};
+
+static void zl3073x_devlink_free(void *ptr)
+{
+	devlink_free(ptr);
+}
+
 struct zl3073x_dev *zl3073x_devm_alloc(struct device *dev)
 {
-	struct zl3073x_dev *zldev;
+	struct devlink *devlink;
 
-	return devm_kzalloc(dev, sizeof(*zldev), GFP_KERNEL);
+	devlink = devlink_alloc(&zl3073x_devlink_ops,
+				sizeof(struct zl3073x_dev), dev);
+	if (!devlink)
+		return NULL;
+
+	if (devm_add_action_or_reset(dev, zl3073x_devlink_free, devlink))
+		return NULL;
+
+	return devlink_priv(devlink);
 }
 EXPORT_SYMBOL_NS_GPL(zl3073x_devm_alloc, "ZL3073X");
 
+static void zl3073x_devlink_unregister(void *ptr)
+{
+	devlink_unregister(ptr);
+}
+
 int zl3073x_dev_init(struct zl3073x_dev *zldev)
 {
+	struct devlink *devlink;
 	int rc;
 
 	rc = devm_mutex_init(zldev->dev, &zldev->lock);
@@ -68,6 +91,14 @@ int zl3073x_dev_init(struct zl3073x_dev *zldev)
 		dev_err(zldev->dev, "Failed to init mutex: %pe\n", ERR_PTR(rc));
 		return rc;
 	}
+
+	devlink = priv_to_devlink(zldev);
+	devlink_register(devlink);
+
+	rc = devm_add_action_or_reset(zldev->dev, zl3073x_devlink_unregister,
+				      devlink);
+	if (rc)
+		return rc;
 
 	return 0;
 }
