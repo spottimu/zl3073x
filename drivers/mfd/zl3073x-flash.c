@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <linux/bitfield.h>
 #include "zl3073x.h"
 #include "zl3073x-flash.h"
 
@@ -462,8 +463,8 @@ static int zl3073x_hwreg_write(struct zl3073x_dev *zldev, u32 addr, u32 value)
  * writes result back to HW register. Returns 0 in case of success or
  * negative value otherwise.
  */
-static int __maybe_unused zl3073x_hwreg_update(struct zl3073x_dev *zldev,
-					       u32 addr, u32 value, u32 mask)
+static int zl3073x_hwreg_update(struct zl3073x_dev *zldev, u32 addr, u32 value,
+				u32 mask)
 {
 	u32 tmp;
 	int rc;
@@ -476,6 +477,60 @@ static int __maybe_unused zl3073x_hwreg_update(struct zl3073x_dev *zldev,
 	tmp |= value & mask;
 
 	return zl3073x_hwreg_write(zldev, addr, tmp);
+}
+
+/**
+ * struct zl3073x_hwreg_seq_item
+ * @addr: HW register to be written
+ * @value: value to be written to HW register
+ * @mask: bitmask indicating bits to be updated
+ * @wait: number of ms to wait after register write
+ */
+struct zl3073x_hwreg_seq_item {
+	u32	addr;
+	u32	value;
+	u32	mask;
+	u32	wait;
+};
+
+#define HWREG_SEQ_ITEM(_addr, _value, _mask, _wait)	\
+{							\
+	.addr	= _addr,				\
+	.value	= FIELD_PREP_CONST(_mask, _value),	\
+	.mask	= _mask,				\
+	.wait	= _wait,				\
+}
+
+/**
+ * zl3073x_hwreg_write_seq - Write HW registers sequence
+ * @zldev: pointer to device structure
+ * @seq: pointer to first sequence item
+ * @num_items: number of items in sequence
+ */
+static int __maybe_unused
+zl3073x_hwreg_write_seq(struct zl3073x_dev *zldev,
+			const struct zl3073x_hwreg_seq_item *seq,
+			size_t num_items)
+{
+	int i, rc = 0;
+
+	for (i = 0; i < num_items; i++) {
+		if (seq[i].mask == U32_MAX)
+			/* Write value directly */
+			rc = zl3073x_hwreg_write(zldev, seq[i].addr,
+						 seq[i].value);
+		else
+			/* Update only bits specified by the mask */
+			rc = zl3073x_hwreg_update(zldev, seq[i].addr,
+						  seq[i].value, seq[i].mask);
+		if (rc)
+			return rc;
+
+		if (seq->wait)
+			msleep(seq->wait);
+	}
+
+	return rc;
 }
 
 static void zl3073x_flash_notify(struct zl3073x_dev *zldev, const char *msg,
