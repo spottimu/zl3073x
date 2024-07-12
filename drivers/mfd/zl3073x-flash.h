@@ -3,6 +3,7 @@
 #ifndef __ZL3073X_FLASH_H
 #define __ZL3073X_FLASH_H
 
+#include <linux/mfd/zl3073x-regs.h>
 #include "zl3073x.h"
 
 struct zl3073x_flash_image;
@@ -33,5 +34,17 @@ struct zl3073x_flash_image {
 	u32					*words;
 	u32					nwords;
 };
+
+/*
+ * Host registers to access indirectly HW registers
+ */
+#define ZL_REG_HWREG_OP				ZL_REG(0xff, 0x00, 1)
+#define ZL_HWREG_OP_WRITE			0x28
+#define ZL_HWREG_OP_READ			0x29
+#define ZL_HWREG_OP_PENDING			BIT(1)
+
+#define ZL_REG_HWREG_ADDR			ZL_REG(0xff, 0x04, 4)
+#define ZL_REG_HWREG_WRITE_DATA			ZL_REG(0xff, 0x08, 4)
+#define ZL_REG_HWREG_READ_DATA			ZL_REG(0xff, 0x0c, 4)
 
 #endif /* __ZL3073X_FLASH_H */
