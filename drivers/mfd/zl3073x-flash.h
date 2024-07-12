@@ -34,4 +34,16 @@ struct zl3073x_flash_image {
 	u32					nwords;
 };
 
+/*
+ * Host registers to access indirectly HW registers
+ */
+ZL3073X_REG8_DEF(hwreg_op, 0x7f80);
+#define ZL3073X_REG_HWREG_OP_WRITE             0x28
+#define ZL3073X_REG_HWREG_OP_READ              0x29
+#define ZL3073X_REG_HWREG_OP_PENDING           BIT(1)
+
+ZL3073X_REG32_DEF(hwreg_addr, 0x7f84);
+ZL3073X_REG32_DEF(hwreg_write_data, 0x7f88);
+ZL3073X_REG32_DEF(hwreg_read_data, 0x7f8c);
+
 #endif /* __ZL3073X_FLASH_H */

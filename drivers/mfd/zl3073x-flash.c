@@ -350,6 +350,123 @@ static int zl3073x_flash_image_load_all(struct zl3073x_dev *zldev,
 	return rc;
 }
 
+/**
+ * zl3073x_hwreg_do_op - Perform HW register read/write operation
+ * @regmap: regmap to access HW
+ * @op: operation to perform
+ *
+ * Returns -ETIMEDOUT in case of failing to finish requested operation
+ * or 0 in case of success.
+ */
+static int zl3073x_hwreg_do_op(struct zl3073x_dev *zldev, unsigned char op)
+{
+#define ZL3073X_HWREG_TIMEOUT_MS 1000 /* 1 second */
+	unsigned long timeout;
+	int rc;
+
+	/* Set requested operation and set pending bit */
+	rc = zl3073x_write_hwreg_op(zldev, op | ZL3073X_REG_HWREG_OP_PENDING);
+	if (rc)
+		return rc;
+
+	/* Set timeout to 1 second */
+	timeout = jiffies + msecs_to_jiffies(ZL3073X_HWREG_TIMEOUT_MS);
+
+	/* Poll for completion - pending bit cleared */
+	do {
+		rc = zl3073x_read_hwreg_op(zldev, &op);
+		if (rc)
+			return rc;
+
+		if (op & ZL3073X_REG_HWREG_OP_PENDING)
+			msleep(1);
+	} while ((op & ZL3073X_REG_HWREG_OP_PENDING) &&
+		 time_before(jiffies, timeout));
+
+	return (op & ZL3073X_REG_HWREG_OP_PENDING) ? -ETIMEDOUT : 0;
+}
+
+/**
+ * zl3073x_hwreg_read - Read HW register
+ * @regmap: regmap to access HW
+ * @addr: HW register address
+ * @value: Value of the HW register
+ *
+ * Reads HW register value and stores it into value and returns 0 in case of
+ * success. Otherwise returns negative value.
+ */
+static int zl3073x_hwreg_read(struct zl3073x_dev *zldev, u32 addr, u32 *value)
+{
+	int rc;
+
+	/* Set address to read data from */
+	rc = zl3073x_write_hwreg_addr(zldev, addr & ~3);
+	if (rc)
+		return rc;
+
+	/* Perform the read operation */
+	rc = zl3073x_hwreg_do_op(zldev, ZL3073X_REG_HWREG_OP_READ);
+	if (rc)
+		return rc;
+
+	/* Read the received data */
+	return zl3073x_read_hwreg_read_data(zldev, value);
+}
+
+/**
+ * zl3073x_hwreg_write - Write value to HW register
+ * @regmap: regmap to access HW
+ * @addr: HW registers address
+ * @value: Value to be written to HW register
+ *
+ * Stores the requested value into HW register and returns 0 in case of
+ * success. Otherwise returns negative value.
+ */
+static int zl3073x_hwreg_write(struct zl3073x_dev *zldev, u32 addr, u32 value)
+{
+	int rc;
+
+	/* Set address to write data to */
+	rc = zl3073x_write_hwreg_addr(zldev, addr & ~3);
+	if (rc)
+		return rc;
+
+	/* Set data to be written */
+	rc = zl3073x_write_hwreg_write_data(zldev, value);
+	if (rc)
+		return rc;
+
+	/* Perform the write operation */
+	return zl3073x_hwreg_do_op(zldev, ZL3073X_REG_HWREG_OP_WRITE);
+}
+
+/**
+ * zl3073x_hwreg_update - Update certain bits in HW register
+ * @regmap: regmap to access HW
+ * @addr: HW register address
+ * @value: Value to be written into HW register
+ * @mask: Bitmask indicating bits to be updated
+ *
+ * Reads HW register, updates requested bits specified by value&mask and
+ * writes result back to HW register. Returns 0 in case of success or
+ * negative value otherwise.
+ */
+static int __maybe_unused zl3073x_hwreg_update(struct zl3073x_dev *zldev,
+					       u32 addr, u32 value, u32 mask)
+{
+	u32 tmp;
+	int rc;
+
+	rc = zl3073x_hwreg_read(zldev, addr, &tmp);
+	if (rc)
+		return rc;
+
+	tmp &= ~mask;
+	tmp |= value & mask;
+
+	return zl3073x_hwreg_write(zldev, addr, tmp);
+}
+
 static void zl3073x_flash_notify(struct zl3073x_dev *zldev, const char *msg,
 				 const char *component, u32 done, u32 total)
 {

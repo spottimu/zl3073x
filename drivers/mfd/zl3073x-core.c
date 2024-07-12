@@ -93,7 +93,7 @@ ZL3073X_REG8_DEF(output_mode,			0x705);
  * Regmap ranges
  */
 #define ZL3073x_PAGE_SIZE	128
-#define ZL3073x_NUM_PAGES	16
+#define ZL3073x_NUM_PAGES	256
 #define ZL3073x_PAGE_SEL	0x7F
 
 static const struct regmap_range_cfg zl3073x_regmap_ranges[] = {
@@ -101,7 +101,7 @@ static const struct regmap_range_cfg zl3073x_regmap_ranges[] = {
 		.range_min	= 0,
 		.range_max	= ZL3073x_NUM_PAGES * ZL3073x_PAGE_SIZE,
 		.selector_reg	= ZL3073x_PAGE_SEL,
-		.selector_mask	= GENMASK(3, 0),
+		.selector_mask	= GENMASK(7, 0),
 		.selector_shift	= 0,
 		.window_start	= 0,
 		.window_len	= ZL3073x_PAGE_SIZE,
