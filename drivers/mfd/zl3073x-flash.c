@@ -1,8 +1,360 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <linux/mfd/zl3073x.h>
 #include <linux/types.h>
 #include <net/devlink.h>
 #include "zl3073x.h"
+#include "zl3073x-flash.h"
+
+/**
+ * enum zl3073x_flash_image_id - Identifiers for possible flash image types
+ */
+enum zl3073x_flash_image_id {
+	ZL3073X_FLASH_IMAGE_INVALID = -1,
+	ZL3073X_FLASH_IMAGE_UTIL = 0,
+	ZL3073X_FLASH_IMAGE_FW1,
+	ZL3073X_FLASH_IMAGE_FW2,
+	ZL3073X_FLASH_IMAGE_FW3,
+	ZL3073X_FLASH_IMAGE_CFG0,
+	ZL3073X_FLASH_IMAGE_CFG1,
+	ZL3073X_FLASH_IMAGE_CFG2,
+	ZL3073X_FLASH_IMAGE_CFG3,
+	ZL3073X_FLASH_IMAGE_CFG4,
+	ZL3073X_FLASH_IMAGE_CFG5,
+	ZL3073X_FLASH_IMAGE_CFG6,
+	ZL3073X_NUM_FLASH_IMAGES,
+};
+
+/*
+ * Array that specifies all possible flash image types
+ */
+static const struct zl3073x_flash_image_type zl3073x_flash_image_types[] = {
+	[ZL3073X_FLASH_IMAGE_UTIL] = {
+		.name		= "utility",
+		.max_words	= 0x08c0,
+	},
+	[ZL3073X_FLASH_IMAGE_FW1] = {
+		.name		= "firmware1",
+		.max_words	= 0xd400,
+	},
+	[ZL3073X_FLASH_IMAGE_FW2] = {
+		.name		= "firmware2",
+		.max_words	= 0x0010,
+	},
+	[ZL3073X_FLASH_IMAGE_FW3] = {
+		.name		= "firmware3",
+		.max_words	= 0x0092,
+	},
+	[ZL3073X_FLASH_IMAGE_CFG0] = {
+		.name		= "config0",
+		.max_words	= 0x0400,
+	},
+	[ZL3073X_FLASH_IMAGE_CFG1] = {
+		.name		= "config1",
+		.max_words	= 0x0400,
+	},
+	[ZL3073X_FLASH_IMAGE_CFG2] = {
+		.name		= "config2",
+		.max_words	= 0x0400,
+	},
+	[ZL3073X_FLASH_IMAGE_CFG3] = {
+		.name		= "config3",
+		.max_words	= 0x0400,
+	},
+	[ZL3073X_FLASH_IMAGE_CFG4] = {
+		.name		= "config4",
+		.max_words	= 0x0400,
+	},
+	[ZL3073X_FLASH_IMAGE_CFG5] = {
+		.name		= "config5",
+		.max_words	= 0x0400,
+	},
+	[ZL3073X_FLASH_IMAGE_CFG6] = {
+		.name		= "config6",
+		.max_words	= 0x0400,
+	},
+};
+
+/* Santity check */
+static_assert(ZL3073X_NUM_FLASH_IMAGES ==
+	      ARRAY_SIZE(zl3073x_flash_image_types));
+
+/**
+ * zl3073x_flash_image_id - Get ID for flash image name
+ * @name: input flash image name
+ *
+ * Returns appropriate ZL3073X_FLASH_IMAGE_* ID for known image name
+ * or ZL3073X_FLASH_IMAGE_INVALID if the name is unknown.
+ */
+static enum zl3073x_flash_image_id zl3073x_flash_image_get_id(const char *name)
+{
+	size_t i;
+
+	for (i = 0; i < ZL3073X_NUM_FLASH_IMAGES; i++)
+		if (!strcasecmp(name, zl3073x_flash_image_types[i].name))
+			return i;
+
+	return ZL3073X_FLASH_IMAGE_INVALID;
+}
+
+/**
+ * zl3073x_flash_image_alloc - Alloc structure to hold image
+ * @nwords: size of buffer in 32-bit words to store data
+ *
+ * Returns pointer to allocated image structure in case of success or
+ * NULL if allocation fails.
+ */
+static struct zl3073x_flash_image *zl3073x_flash_image_alloc(u32 nwords)
+{
+	struct zl3073x_flash_image *image;
+
+	image = kzalloc(sizeof(struct zl3073x_flash_image), GFP_KERNEL);
+	if (!image)
+		return NULL;
+
+	image->words = kcalloc(nwords, sizeof(u32), GFP_KERNEL);
+	if (!image->words) {
+		kfree(image);
+		return NULL;
+	}
+
+	image->nwords = nwords;
+
+	return image;
+}
+
+/**
+ * zl3073x_flash_image_free - Free allocated image structure
+ * @image: pointer to allocated structure
+ */
+static void zl3073x_flash_image_free(struct zl3073x_flash_image *image)
+{
+	if (image)
+		kfree(image->words);
+
+	kfree(image);
+}
+
+/**
+ * zl3073x_flash_image_readline - Read next line from image
+ * @dst: destination buffer
+ * @dst_sz: destination buffer size
+ * @src: source buffer
+ * @src_sz: source buffer size
+ *
+ * Returns number of characters read in case of success or -EINVAL if
+ * the line to be read is too long for destination buffer.
+ */
+static ssize_t zl3073x_flash_image_readline(char *dst, size_t dst_sz,
+					    const char *src, size_t src_sz)
+{
+	size_t skip, len;
+	const char *ptr;
+
+	/* Skip any existing new-lines at the beginning */
+	ptr = memchr_inv(src, '\n', src_sz);
+	if (ptr) {
+		skip = ptr - src;
+		src_sz -= skip;
+		src = ptr;
+	} else {
+		skip = 0;
+	}
+
+	/* Now look for the next new-line in the source */
+	ptr = memscan((void *)src, '\n', src_sz);
+	len = ptr - src;
+
+	/* Return if the source line is too long for destination */
+	if (len >= dst_sz)
+		return -EINVAL;
+
+	/* Copy the line from source and append NUL char  */
+	memcpy(dst, src, len);
+	*(dst+len) = '\0';
+
+	/* Return number of read chars */
+	return len + skip;
+}
+
+#define FLASH_ERR_PREFIX "FW update failed: "
+#define FLASH_ERR_MSG(_zldev, _extack, _msg, ...) do {			\
+	dev_err((_zldev)->dev, FLASH_ERR_PREFIX _msg "\n",		\
+		## __VA_ARGS__);					\
+	NL_SET_ERR_MSG_FMT_MOD((_extack), FLASH_ERR_PREFIX _msg,	\
+			       ## __VA_ARGS__);				\
+} while (0)
+
+/**
+ * zl3073x_flash_image_load - Load image from source
+ * @zldev: pointer to device structure
+ * @imagep: pointer to image structure pointer
+ * @src: source buffer pointer
+ * @size: size of source buffer
+ * @extack: netlink extack pointer to report errors
+ *
+ * Loads single image from source and stores its data into allocated
+ * structure. Pointer to this structure is stored in @imagep.
+ *
+ * Returns number of characters read from source or negative value otherwise.
+ */
+static ssize_t zl3073x_flash_image_load(struct zl3073x_dev *zldev,
+					struct zl3073x_flash_image **imagep,
+					const char *src, size_t size,
+					struct netlink_ext_ack *extack)
+{
+	struct zl3073x_flash_image *image = NULL;
+	struct device *dev = zldev->dev;
+	enum zl3073x_flash_image_id id;
+	const char *ptr = src;
+	u32 nwords, count;
+	char line[32];
+	ssize_t len;
+	int rc;
+
+	/* Fetch image name from input */
+	len = zl3073x_flash_image_readline(line, sizeof(line), src, size);
+	if (len < 0)
+		goto err_too_long;
+	else if (!len)
+		return 0; /* No more data */
+
+	size -= len;
+	ptr += len;
+
+	dev_dbg(dev, "Hex-image '%s' found\n", line);
+
+	id = zl3073x_flash_image_get_id(line);
+	if (id == ZL3073X_FLASH_IMAGE_INVALID) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "FW parse error - unknown image type '%s'", line);
+		return -EINVAL;
+	}
+
+	/* Fetch image size from input */
+	len = zl3073x_flash_image_readline(line, sizeof(line), ptr, size);
+	if (len < 0)
+		goto err_too_long;
+	else if (!len) {
+		FLASH_ERR_MSG(zldev, extack, "FW parse error - missing size");
+		return -EINVAL;
+	}
+
+	size -= len;
+	ptr += len;
+
+	rc = kstrtou32(line, 10, &nwords);
+	if (rc) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "FW parse error - invalid size: '%s'", line);
+		return rc;
+	}
+
+	/* Check image size validity */
+	if (nwords > zl3073x_flash_image_types[id].max_words) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "FW parse error - image too big: %u", nwords);
+		return -EINVAL;
+	}
+
+	dev_dbg(dev, "Expected image size: %u 32bit words\n", nwords);
+
+	/* Alloc image */
+	image = zl3073x_flash_image_alloc(nwords);
+	if (!image) {
+		FLASH_ERR_MSG(zldev, extack, "Failed to alloc memory");
+		return -ENOMEM;
+	}
+
+	/* Set image type */
+	image->type = &zl3073x_flash_image_types[id];
+
+	/* Load image data */
+	for (count = 0; count < nwords; count++) {
+		len = zl3073x_flash_image_readline(line, sizeof(line), ptr,
+						   size);
+		if (len < 0) {
+			goto err_too_long;
+		} else if (!len) {
+			FLASH_ERR_MSG(zldev, extack,
+				      "FW parse error - missing data");
+			goto err_common;
+		}
+
+		size -= len;
+		ptr += len;
+
+		rc = kstrtou32(line, 16, &image->words[count]);
+		if (rc) {
+			FLASH_ERR_MSG(zldev, extack,
+				      "FW parse error - invalid data: '%s'",
+				      line);
+			goto err_common;
+		}
+	}
+
+	*imagep = image;
+
+	return ptr - src;
+
+err_too_long:
+	FLASH_ERR_MSG(zldev, extack, "FW parse error - line too long");
+	rc = -EINVAL;
+
+err_common:
+	zl3073x_flash_image_free(image);
+
+	return rc;
+}
+
+/**
+ * zl3073x_flash_image_load_all - Load all images from source
+ * @zldev: pointer to device structure
+ * @images: pointer to images array
+ * @data: source buffer pointer
+ * @size: size of source buffer
+ * @extack: netlink extack pointer to report errors
+ *
+ * Loads all images from source and stores them into array provided
+ * by caller.
+ *
+ * Returns 0 in case of success or negative value otherwise.
+ */
+static int zl3073x_flash_image_load_all(struct zl3073x_dev *zldev,
+					struct zl3073x_flash_image **images,
+					const char *data, size_t size,
+					struct netlink_ext_ack *extack)
+{
+	struct zl3073x_flash_image *image;
+	enum zl3073x_flash_image_id id;
+	ssize_t rc;
+
+	do {
+		rc = zl3073x_flash_image_load(zldev, &image, data, size,
+					      extack);
+		if (rc > 0) {
+			size -= rc;
+			data += rc;
+
+			id = zl3073x_flash_image_get_id(image->type->name);
+			if (images[id]) {
+				FLASH_ERR_MSG(zldev, extack,
+					      "Duplicate flash image '%s'",
+					      image->type->name);
+				rc = -EINVAL;
+				break;
+			}
+			images[id] = image;
+		}
+	} while (rc > 0);
+
+	if (rc) {
+		for (id = 0; id < ZL3073X_NUM_FLASH_IMAGES; id++)
+			zl3073x_flash_image_free(images[id]);
+	}
+
+	return rc;
+}
 
 static void zl3073x_flash_notify(struct zl3073x_dev *zldev, const char *msg,
 				 const char *component, u32 done, u32 total)
@@ -11,6 +363,37 @@ static void zl3073x_flash_notify(struct zl3073x_dev *zldev, const char *msg,
 
 	devlink_flash_update_status_notify(devlink, msg, component, done,
 					   total);
+}
+
+/**
+ * zl3073x_flash_image_flash_all - Flash all images
+ * @zldev: pointer to device structure
+ * @images: pointer to images array
+ * @extack: netlink extack pointer to report errors
+ *
+ * Returns 0 in case of success or negative number otherwise.
+ */
+static int zl3073x_flash_image_flash_all(struct zl3073x_dev *zldev,
+					 struct zl3073x_flash_image **images,
+					 struct netlink_ext_ack *extack)
+{
+	enum zl3073x_flash_image_id id;
+	int rc = 0;
+
+	for (id = 0; id < ZL3073X_NUM_FLASH_IMAGES; id++) {
+		if (!images[id] || !images[id]->type->flash)
+			continue;
+
+		rc = images[id]->type->flash(zldev, images[id], extack);
+		if (rc) {
+			FLASH_ERR_MSG(zldev, extack,
+				      "Failed to flash image '%s'",
+				      images[id]->type->name);
+			break;
+		}
+	}
+
+	return rc;
 }
 
 /**
@@ -25,12 +408,38 @@ int zl3073x_flash_update(struct devlink *devlink,
 			 struct devlink_flash_update_params *params,
 			 struct netlink_ext_ack *extack)
 {
+	struct zl3073x_flash_image *images[ZL3073X_NUM_FLASH_IMAGES] = { };
 	struct zl3073x_dev *zldev = devlink_priv(devlink);
+	enum zl3073x_flash_image_id id;
+	int rc;
 
 	zl3073x_flash_notify(zldev, "Preparing to flash", params->component,
 			     0, 0);
 
-	zl3073x_flash_notify(zldev, "Flashing done", params->component, 0, 0);
+	/* Load all images from firmware bundle */
+	rc = zl3073x_flash_image_load_all(zldev, &images[0], params->fw->data,
+					  params->fw->size, extack);
+	if (rc)
+		goto err_load;
 
-	return 0;
+	if (!images[ZL3073X_FLASH_IMAGE_UTIL]) {
+		zl3073x_flash_notify(zldev,
+				     "Flash utility is missing in firmware",
+				     params->component, 0, 0);
+		rc = -EINVAL;
+		goto err_load;
+	}
+
+	/* Flash all loaded images */
+	rc = zl3073x_flash_image_flash_all(zldev, images, extack);
+
+	/* Free allocated images */
+	for (id = 0; id < ZL3073X_NUM_FLASH_IMAGES; id++)
+		zl3073x_flash_image_free(images[id]);
+
+err_load:
+	zl3073x_flash_notify(zldev, rc ? "Flashing failed" : "Flashing done",
+			     params->component, 0, 0);
+
+	return rc;
 }
