@@ -37,6 +37,18 @@ struct zl3073x_flash_image {
 };
 
 /*
+ * Host registers for checking flash utility status
+ */
+ZL3073X_REG32_DEF(flash_hash,			0x0078);
+ZL3073X_REG8_DEF(flash_fam,			0x007c);
+ZL3073X_REG8_DEF(flash_rel,			0x007d);
+ZL3073X_REG8_DEF(host_control,			0x0082);
+#define ZL3073X_REG_HOST_CONTROL_ENABLE		BIT(0)
+
+ZL3073X_REG32_DEF(error_count, 			0x0104);
+ZL3073X_REG32_DEF(error_cause, 			0x0108);
+
+/*
  * Host registers to access indirectly HW registers
  */
 ZL3073X_REG8_DEF(hwreg_op, 0x7f80);
