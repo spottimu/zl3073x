@@ -14,6 +14,7 @@ struct zl3073x_flash_image;
  * @name: Flash image name
  * @max_words: Maximal image size in 32-bit words
  * @flash_op: Operation specific to flash image type
+ * @load_addr: Device memory address where should be the image loaded
  */
 struct zl3073x_flash_image_type {
 	const char	*name;
@@ -21,6 +22,7 @@ struct zl3073x_flash_image_type {
 	int		(*flash)(struct zl3073x_dev *zldev,
 				 struct zl3073x_flash_image *image,
 				 struct netlink_ext_ack *extack);
+	u32		load_addr;
 };
 
 /**

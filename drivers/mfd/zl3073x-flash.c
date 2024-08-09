@@ -32,46 +32,57 @@ static const struct zl3073x_flash_image_type zl3073x_flash_image_types[] = {
 	[ZL3073X_FLASH_IMAGE_UTIL] = {
 		.name		= "utility",
 		.max_words	= 0x08c0,
+		.load_addr	= 0x20000000,
 	},
 	[ZL3073X_FLASH_IMAGE_FW1] = {
 		.name		= "firmware1",
 		.max_words	= 0xd400,
+		.load_addr	= 0x20002000,
 	},
 	[ZL3073X_FLASH_IMAGE_FW2] = {
 		.name		= "firmware2",
 		.max_words	= 0x0010,
+		.load_addr	= 0x20000000,
 	},
 	[ZL3073X_FLASH_IMAGE_FW3] = {
 		.name		= "firmware3",
 		.max_words	= 0x0092,
+		.load_addr	= 0x20000400,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG0] = {
 		.name		= "config0",
 		.max_words	= 0x0400,
+		.load_addr	= 0x20000000,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG1] = {
 		.name		= "config1",
 		.max_words	= 0x0400,
+		.load_addr	= 0x20000000,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG2] = {
 		.name		= "config2",
 		.max_words	= 0x0400,
+		.load_addr	= 0x20000000,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG3] = {
 		.name		= "config3",
 		.max_words	= 0x0400,
+		.load_addr	= 0x20000000,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG4] = {
 		.name		= "config4",
 		.max_words	= 0x0400,
+		.load_addr	= 0x20000000,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG5] = {
 		.name		= "config5",
 		.max_words	= 0x0400,
+		.load_addr	= 0x20000000,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG6] = {
 		.name		= "config6",
 		.max_words	= 0x0400,
+		.load_addr	= 0x20000000,
 	},
 };
 
@@ -469,6 +480,76 @@ static void zl3073x_flash_notify(struct zl3073x_dev *zldev, const char *msg,
 
 	devlink_flash_update_status_notify(devlink, msg, component, done,
 					   total);
+}
+
+/**
+ * zl3073x_flash_download_image - Download image to device memory
+ * @zldev - zl3073x device structure
+ * @image - image to be downloaded
+ * @extack: netlink extack pointer to report errors
+ *
+ * Returns 0 in case of success or negative value otherwise.
+ */
+static __maybe_unused
+int zl3073x_flash_download_image(struct zl3073x_dev *zldev,
+				 struct zl3073x_flash_image *image,
+				 struct netlink_ext_ack *extack)
+{
+#define CHECK_DELAY	5000 /* Check for interrupt each 5 seconds */
+	struct device *dev = zldev->dev;
+	unsigned long timeout;
+	u32 idx, dest_addr;
+	int rc;
+
+	dev_info(zldev->dev, "Loading %u words to device memory at 0x%0x\n",
+		 image->nwords, image->type->load_addr);
+
+	/* Send devlink flash notification */
+	zl3073x_flash_notify(zldev, "Downloading image started",
+			     image->type->name, 0, 0);
+
+	timeout = jiffies + msecs_to_jiffies(CHECK_DELAY);
+
+	dest_addr = image->type->load_addr;
+	for (idx = 0; idx < image->nwords; idx++, dest_addr += 4) {
+		/* Write current word to HW memory */
+		rc = zl3073x_hwreg_write(zldev, dest_addr, image->words[idx]);
+		if (rc) {
+			FLASH_ERR_MSG(zldev, extack,
+				      "Failed to write to memory at 0x%0x",
+				      dest_addr);
+			goto error;
+		}
+
+		/* Check for pending interrupt each 5 seconds */
+		if (time_after(jiffies, timeout)) {
+			if (signal_pending(current)) {
+				FLASH_ERR_MSG(zldev, extack,
+					      "Flashing interrupted by signal");
+				rc = -EINTR;
+				goto error;
+			}
+
+			timeout = jiffies + msecs_to_jiffies(CHECK_DELAY);
+		}
+
+		/* Report status each 1 kB block */
+		if (!((idx + 1) & U8_MAX)) {
+			zl3073x_flash_notify(zldev, "Downloading image",
+					     image->type->name, idx,
+					     image->nwords);
+		}
+	}
+
+	dev_info(dev, "%u words written to device memory\n", image->nwords);
+
+error:
+	/* Send final notification - success or failure */
+	zl3073x_flash_notify(zldev,
+			     rc ? "Downloading failed" : "Downloading done",
+			     image->type->name, 0, 0);
+
+	return rc;
 }
 
 /**
