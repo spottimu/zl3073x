@@ -26,6 +26,8 @@ enum zl3073x_flash_image_id {
 	ZL3073X_NUM_FLASH_IMAGES,
 };
 
+#define FLASH_UTIL_ADDR	0x20000000
+
 /*
  * Array that specifies all possible flash image types
  */
@@ -33,7 +35,7 @@ static const struct zl3073x_flash_image_type zl3073x_flash_image_types[] = {
 	[ZL3073X_FLASH_IMAGE_UTIL] = {
 		.name		= "utility",
 		.max_words	= 0x08c0,
-		.load_addr	= 0x20000000,
+		.load_addr	= FLASH_UTIL_ADDR,
 	},
 	[ZL3073X_FLASH_IMAGE_FW1] = {
 		.name		= "firmware1",
@@ -502,7 +504,7 @@ struct zl3073x_hwreg_seq_item {
  * @seq: pointer to first sequence item
  * @num_items: number of items in sequence
  */
-static int __maybe_unused
+static int
 zl3073x_hwreg_write_seq(struct zl3073x_dev *zldev,
 			const struct zl3073x_hwreg_seq_item *seq,
 			size_t num_items)
@@ -545,10 +547,10 @@ static void zl3073x_flash_notify(struct zl3073x_dev *zldev, const char *msg,
  *
  * Returns 0 in case of success or negative value otherwise.
  */
-static __maybe_unused
-int zl3073x_flash_download_image(struct zl3073x_dev *zldev,
-				 struct zl3073x_flash_image *image,
-				 struct netlink_ext_ack *extack)
+static int
+zl3073x_flash_download_image(struct zl3073x_dev *zldev,
+			     struct zl3073x_flash_image *image,
+			     struct netlink_ext_ack *extack)
 {
 #define CHECK_DELAY	5000 /* Check for interrupt each 5 seconds */
 	struct device *dev = zldev->dev;
@@ -608,6 +610,174 @@ error:
 }
 
 /**
+ * zl3073x_flash_get_error_count - Get error count and cause
+ * @zldev: pointer to device structure
+ * @causep: optional pointer to store error cause
+ *
+ * Returns number of errors detected by flash utility and their cause or
+ * UINT_MAX when I/O error occurs during communication with the device.
+ */
+static unsigned int
+zl3073x_flash_get_error_count(struct zl3073x_dev *zldev, u32 *causep)
+{
+	u32 count, cause;
+	int rc;
+
+	rc = zl3073x_read_u32(zldev, ZL_REG_ERROR_COUNT, &count);
+	if (rc)
+		return UINT_MAX;
+
+	rc = zl3073x_read_u32(zldev, ZL_REG_ERROR_CAUSE, &cause);
+	if (rc)
+		return UINT_MAX;
+
+	dev_dbg(zldev->dev, "%s: count=0x%x, cause=0x%x\n", __func__, count,
+		cause);
+
+	if (causep)
+		*causep = cause;
+
+	return count;
+}
+
+/**
+ * zl3073x_flash_check_utility - Check flash utility
+ * @zldev: pointer to device structure
+ *
+ * Returns 0 if the flash utility running inside device reports correct
+ * family number, -ENODEV if not or another negative number when
+ * I/O error occurs during communication with the device.
+ */
+static int
+zl3073x_flash_check_utility(struct zl3073x_dev *zldev)
+{
+	u8 family, release;
+	u32 hash;
+	int rc;
+
+	rc = zl3073x_read_u32(zldev, ZL_REG_FLASH_HASH, &hash);
+	if (rc)
+		return rc;
+
+	rc = zl3073x_read_u8(zldev, ZL_REG_FLASH_FAMILY, &family);
+	if (rc)
+		return rc;
+
+	rc = zl3073x_read_u8(zldev, ZL_REG_FLASH_RELEASE, &release);
+	if (rc)
+		return rc;
+
+	dev_dbg(zldev->dev,
+		"Flash utility check: hash 0x%08x, fam 0x%02x, rel 0x%02x\n",
+		hash, family, release);
+
+	/* Return success for correct family */
+	return (family == 0x21) ? 0 : -ENODEV;
+}
+
+/**
+ * zl3073x_flash_prepare - Prepare the device for flashing
+ * @zldev: pointer to device structure
+ * @utility: flash utility image
+ * @extack: netlink extack pointer to report errors
+ *
+ * The function performs the following steps:
+ * 1) Execute sequence of HW registers writes necessary prior download
+ * 2) Download flash utility image to device memory
+ * 3) Execute sequence of HW registers writes necessary after download
+ * 4) Check that running utility reports correct family value
+ * 5) Enable host control
+ * 6) Check for potential error and its cause detected by utility
+ *
+ * Returns 0 in case of success or negative value otherwise.
+ */
+static int zl3073x_flash_prepare(struct zl3073x_dev *zldev,
+				 struct zl3073x_flash_image *utility,
+				 struct netlink_ext_ack *extack)
+{
+	/* Sequence to be written prior utility download */
+	static const struct zl3073x_hwreg_seq_item pre_seq[] = {
+		HWREG_SEQ_ITEM(0x80000400, 1, BIT(0), 1000),
+		HWREG_SEQ_ITEM(0x10000000, 1, BIT(2), 1000),
+		HWREG_SEQ_ITEM(0x10000020, 1, BIT(0), 1000),
+	};
+	/* Sequence to be written after utility download */
+	static const struct zl3073x_hwreg_seq_item post_seq[] = {
+		HWREG_SEQ_ITEM(0x10400004, 0x000000C0, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10400008, 0x00000000, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10400010, FLASH_UTIL_ADDR, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10400014, FLASH_UTIL_ADDR+4, U32_MAX, 1000),
+		HWREG_SEQ_ITEM(0x10000000, 1, BIT(9), 1000),
+		HWREG_SEQ_ITEM(0x10000020, 0, BIT(0), 1000),
+		HWREG_SEQ_ITEM(0x80000400, 0, BIT(0), 1000),
+	};
+	unsigned int err_count, err_cause = 0;
+	u8 host_ctrl;
+	int rc;
+
+	zl3073x_flash_notify(zldev, "Prepare download", utility->type->name,
+			     0, 0);
+
+	/* Execure pre-load sequence */
+	rc = zl3073x_hwreg_write_seq(zldev, pre_seq, ARRAY_SIZE(pre_seq));
+	if (rc) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "Failed to execute pre-load sequence");
+		return rc;
+	}
+
+	/* Download utility image to device memory */
+	rc = zl3073x_flash_download_image(zldev, utility, extack);
+	if (rc)
+		return rc;
+
+	/* Execute post-load sequence */
+	rc = zl3073x_hwreg_write_seq(zldev, post_seq, ARRAY_SIZE(post_seq));
+	if (rc) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "Failed to execute post-load sequence");
+		return rc;
+	}
+
+	/* Check that utility identifies itself correctly */
+	rc = zl3073x_flash_check_utility(zldev);
+	if (rc) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "Flash utility check failed");
+		return rc;
+	}
+
+	/* Enable host control */
+	rc = zl3073x_read_u8(zldev, ZL_REG_HOST_CONTROL, &host_ctrl);
+	if (rc) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "Failed to read host control register");
+		return rc;
+	}
+
+	host_ctrl &= ~ZL_HOST_CONTROL_ENABLE;
+	host_ctrl |= ZL_HOST_CONTROL_ENABLE;
+
+	rc = zl3073x_write_u8(zldev, ZL_REG_HOST_CONTROL, host_ctrl);
+	if (rc) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "Failed to write host control register");
+		return rc;
+	}
+
+	/* Check for errors */
+	err_count = zl3073x_flash_get_error_count(zldev, &err_cause);
+	if (err_count || err_cause) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "Flash utility error detected: count=%d cause=%x",
+			      err_count, err_cause);
+		return rc;
+	}
+
+	return rc;
+}
+
+/**
  * zl3073x_flash_image_flash_all - Flash all images
  * @zldev: pointer to device structure
  * @images: pointer to images array
@@ -621,6 +791,12 @@ static int zl3073x_flash_image_flash_all(struct zl3073x_dev *zldev,
 {
 	enum zl3073x_flash_image_id id;
 	int rc = 0;
+
+	/* Prepare for flashing - download utility and start */
+	rc = zl3073x_flash_prepare(zldev, images[ZL3073X_FLASH_IMAGE_UTIL],
+				   extack);
+	if (rc)
+		return rc;
 
 	for (id = 0; id < ZL3073X_NUM_FLASH_IMAGES; id++) {
 		if (!images[id] || !images[id]->type->flash)
