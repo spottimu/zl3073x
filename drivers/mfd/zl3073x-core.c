@@ -455,6 +455,7 @@ static int zl3073x_devlink_info_get(struct devlink *devlink,
 }
 
 static const struct devlink_ops zl3073x_devlink_ops = {
+	.flash_update = zl3073x_flash_update,
 	.info_get = zl3073x_devlink_info_get,
 };
 
