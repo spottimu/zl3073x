@@ -36,6 +36,10 @@ static int zl3073x_flash_page(struct zl3073x_dev *zldev,
 			      struct zl3073x_flash_image *image,
 			      struct netlink_ext_ack *extack);
 
+static int zl3073x_flash_page_with_copy(struct zl3073x_dev *zldev,
+					struct zl3073x_flash_image *image,
+					struct netlink_ext_ack *extack);
+
 /*
  * Array that specifies all possible flash image types
  */
@@ -54,13 +58,19 @@ static const struct zl3073x_flash_image_type zl3073x_flash_image_types[] = {
 	},
 	[ZL3073X_FLASH_IMAGE_FW2] = {
 		.name		= "firmware2",
+		.flash		= zl3073x_flash_page_with_copy,
 		.max_words	= 0x0010,
 		.load_addr	= 0x20000000,
+		.flash_page	= 0x3e0,
+		.copy_page	= 0x000,
 	},
 	[ZL3073X_FLASH_IMAGE_FW3] = {
 		.name		= "firmware3",
+		.flash		= zl3073x_flash_page_with_copy,
 		.max_words	= 0x0092,
 		.load_addr	= 0x20000400,
+		.flash_page	= 0x3e4,
+		.copy_page	= 0x004,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG0] = {
 		.name		= "config0",
@@ -982,6 +992,52 @@ finish:
 	zl3073x_flash_notify(zldev,
 			     rc ?  "Flashing failed" : "Flashing done",
 			     image->type->name, 0, 0);
+
+	return rc;
+}
+
+/**
+ * zl3073x_flash_page_with_copy - Flash page and make its copy
+ * @zldev: pointer to device structure
+ * @image: flash image with source data
+ * @extack: netlink extack pointer to report errors
+ *
+ * Returns 0 in case of success or negative value otherwise.
+ */
+static int zl3073x_flash_page_with_copy(struct zl3073x_dev *zldev,
+					struct zl3073x_flash_image *image,
+					struct netlink_ext_ack *extack)
+{
+	int rc;
+
+	/* First flash the image to primary page */
+	rc = zl3073x_flash_page(zldev, image, extack);
+	if (rc)
+		return rc;
+
+	/* Wait for utility to be ready */
+	rc = zl3073x_flash_wait_ready(zldev, FLASH_PHASE1_TIMEOUT_MS);
+	if (rc)
+		return rc;
+
+	/* Set source page to be copied */
+	rc = zl3073x_write_u32(zldev, ZL_REG_FLASH_INDEX_READ,
+			       image->type->flash_page);
+	if (rc)
+		return rc;
+
+	/* Set destination page for the copy */
+	rc = zl3073x_write_u32(zldev, ZL_REG_FLASH_INDEX_WRITE,
+			       image->type->copy_page);
+	if (rc)
+		return rc;
+
+	/* Perform copy operation */
+	rc = zl3073x_flash_cmd_wait(zldev, ZL_WRITE_FLASH_OP_COPY_PAGE);
+	if (rc)
+		FLASH_ERR_MSG(zldev, extack,
+			      "Failed to copy page: src %d, dst: %d",
+			      image->type->flash_page, image->type->copy_page);
 
 	return rc;
 }
