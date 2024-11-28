@@ -23,6 +23,7 @@ struct zl3073x_flash_image_type {
 				 struct netlink_ext_ack *extack);
 	u32		load_addr;
 	u32		flash_page;
+	u32		copy_page;
 };
 
 /**
@@ -56,6 +57,7 @@ ZL3073X_REG32_DEF(write_flash,			0x0098);
 #define ZL3073X_REG_WRITE_FLASH_OP_DONE		0x0
 #define ZL3073X_REG_WRITE_FLASH_OP_SECTORS	0x2
 #define ZL3073X_REG_WRITE_FLASH_OP_PAGE		0x3
+#define ZL3073X_REG_WRITE_FLASH_OP_COPY_PAGE	0x4
 
 ZL3073X_REG8_DEF(flash_info,			0x0100);
 #define ZL3073X_REG_FLASH_INFO_SECTOR_SIZE	GENMASK(3, 0)
