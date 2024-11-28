@@ -32,6 +32,10 @@ static int zl3073x_flash_sectors(struct zl3073x_dev *zldev,
 				 struct zl3073x_flash_image *image,
 				 struct netlink_ext_ack *extack);
 
+static int zl3073x_flash_page(struct zl3073x_dev *zldev,
+			      struct zl3073x_flash_image *image,
+			      struct netlink_ext_ack *extack);
+
 /*
  * Array that specifies all possible flash image types
  */
@@ -61,37 +65,51 @@ static const struct zl3073x_flash_image_type zl3073x_flash_image_types[] = {
 	[ZL3073X_FLASH_IMAGE_CFG0] = {
 		.name		= "config0",
 		.max_words	= 0x0400,
+		.flash		= zl3073x_flash_page,
 		.load_addr	= 0x20000000,
+		.flash_page	= 0x3d0,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG1] = {
 		.name		= "config1",
 		.max_words	= 0x0400,
+		.flash		= zl3073x_flash_page,
 		.load_addr	= 0x20000000,
+		.flash_page	= 0x3c0,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG2] = {
 		.name		= "config2",
 		.max_words	= 0x0400,
+		.flash		= zl3073x_flash_page,
 		.load_addr	= 0x20000000,
+		.flash_page	= 0x3b0,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG3] = {
 		.name		= "config3",
 		.max_words	= 0x0400,
+		.flash		= zl3073x_flash_page,
 		.load_addr	= 0x20000000,
+		.flash_page	= 0x3a0,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG4] = {
 		.name		= "config4",
 		.max_words	= 0x0400,
+		.flash		= zl3073x_flash_page,
 		.load_addr	= 0x20000000,
+		.flash_page	= 0x390,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG5] = {
 		.name		= "config5",
 		.max_words	= 0x0400,
+		.flash		= zl3073x_flash_page,
 		.load_addr	= 0x20000000,
+		.flash_page	= 0x380,
 	},
 	[ZL3073X_FLASH_IMAGE_CFG6] = {
 		.name		= "config6",
 		.max_words	= 0x0400,
+		.flash		= zl3073x_flash_page,
 		.load_addr	= 0x20000000,
+		.flash_page	= 0x370,
 	},
 };
 
@@ -892,6 +910,73 @@ zl3073x_flash_sectors(struct zl3073x_dev *zldev,
 		/* Move to next page */
 		page += bsize / ZL3073X_FLASH_PAGE_SIZE;
 	}
+
+finish:
+	zl3073x_flash_notify(zldev,
+			     rc ?  "Flashing failed" : "Flashing done",
+			     image->type->name, 0, 0);
+
+	return rc;
+}
+
+/**
+ * zl3073x_flash_page - Flash page
+ * @zldev: pointer to device structure
+ * @image: flash image with source data
+ * @extack: netlink extack pointer to report errors
+ *
+ * Returns 0 in case of success or negative value otherwise.
+ */
+static int zl3073x_flash_page(struct zl3073x_dev *zldev,
+			      struct zl3073x_flash_image *image,
+			      struct netlink_ext_ack *extack)
+{
+	int rc;
+
+	zl3073x_flash_notify(zldev, "Flashing image started",
+			     image->type->name, 0, 0);
+
+	/* Download image to device memory */
+	rc = zl3073x_flash_download_image(zldev, image, extack);
+	if (rc) {
+		FLASH_ERR_MSG(zldev, extack,
+			      "Failed to download data for image %s",
+			      image->type->name);
+		goto finish;
+	}
+
+	/* Set address to flash from */
+	rc = zl3073x_write_u32(zldev, ZL_REG_IMAGE_START_ADDR,
+			       image->type->load_addr);
+	if (rc)
+		goto finish;
+
+	/* Set size of block to flash */
+	rc = zl3073x_write_u32(zldev, ZL_REG_IMAGE_SIZE, image->nwords * 4);
+	if (rc)
+		goto finish;
+
+	/* Set destination page to flash */
+	rc = zl3073x_write_u32(zldev, ZL_REG_FLASH_INDEX_WRITE,
+			       image->type->flash_page);
+	if (rc)
+		goto finish;
+
+	/* Set filling pattern */
+	rc = zl3073x_write_u32(zldev, ZL_REG_FILL_PATTERN, U32_MAX);
+	if (rc)
+		goto finish;
+
+	zl3073x_flash_notify(zldev, "Flashing image", image->type->name,
+			     0, image->nwords);
+
+	/* Execute sectors flash operation */
+	rc = zl3073x_flash_cmd_wait(zldev, ZL_WRITE_FLASH_OP_PAGE);
+	if (rc)
+		goto finish;
+
+	zl3073x_flash_notify(zldev, "Flashing image", image->type->name,
+			     image->nwords, image->nwords);
 
 finish:
 	zl3073x_flash_notify(zldev,
