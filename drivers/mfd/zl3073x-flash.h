@@ -23,6 +23,7 @@ struct zl3073x_flash_image_type {
 				 struct zl3073x_flash_image *image,
 				 struct netlink_ext_ack *extack);
 	u32		load_addr;
+	u32		flash_page;
 };
 
 /**
@@ -47,8 +48,29 @@ struct zl3073x_flash_image {
 #define ZL_REG_HOST_CONTROL			ZL_REG(1, 0x02, 1)
 #define ZL_HOST_CONTROL_ENABLE			BIT(0)
 
+#define ZL_REG_IMAGE_START_ADDR			ZL_REG(1, 0x04, 4)
+#define ZL_REG_IMAGE_SIZE			ZL_REG(1, 0x08, 4)
+#define ZL_REG_FLASH_INDEX_READ			ZL_REG(1, 0x0c, 4)
+#define ZL_REG_FLASH_INDEX_WRITE		ZL_REG(1, 0x10, 4)
+#define ZL_REG_FILL_PATTERN			ZL_REG(1, 0x14, 4)
+
+#define ZL_REG_WRITE_FLASH			ZL_REG(1, 0x18, 1)
+#define ZL_WRITE_FLASH_OP			GENMASK(2, 0)
+#define ZL_WRITE_FLASH_OP_DONE			0x0
+#define ZL_WRITE_FLASH_OP_SECTORS		0x2
+
+#define ZL_REG_FLASH_INFO			ZL_REG(2, 0x00, 1)
+#define ZL_FLASH_INFO_SECTOR_SIZE		GENMASK(3, 0)
+#define ZL_FLASH_INFO_SECTOR_4K			0
+#define ZL_FLASH_INFO_SECTOR_64K		1
+
 #define ZL_REG_ERROR_COUNT			ZL_REG(2, 0x04, 4)
 #define ZL_REG_ERROR_CAUSE			ZL_REG(2, 0x08, 4)
+
+#define ZL_REG_OP_STATE				ZL_REG(2, 0x14, 1)
+#define ZL_OP_STATE_NO_COMMAND			0
+#define ZL_OP_STATE_PENDING			1
+#define ZL_OP_STATE_DONE			2
 
 /*
  * Host registers to access indirectly HW registers

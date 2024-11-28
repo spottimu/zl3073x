@@ -28,6 +28,10 @@ enum zl3073x_flash_image_id {
 
 #define FLASH_UTIL_ADDR	0x20000000
 
+static int zl3073x_flash_sectors(struct zl3073x_dev *zldev,
+				 struct zl3073x_flash_image *image,
+				 struct netlink_ext_ack *extack);
+
 /*
  * Array that specifies all possible flash image types
  */
@@ -41,6 +45,8 @@ static const struct zl3073x_flash_image_type zl3073x_flash_image_types[] = {
 		.name		= "firmware1",
 		.max_words	= 0xd400,
 		.load_addr	= 0x20002000,
+		.flash_page	= 0x020,
+		.flash		= zl3073x_flash_sectors,
 	},
 	[ZL3073X_FLASH_IMAGE_FW2] = {
 		.name		= "firmware2",
@@ -661,6 +667,238 @@ zl3073x_flash_get_error_count(struct zl3073x_dev *zldev, u32 *causep)
 		*causep = cause;
 
 	return count;
+}
+
+/**
+ * zl3073x_flash_wait_ready - Check or wait for utility to be ready to flash
+ * @zldev: pointer to device structure
+ * @timeout_ms: timeout for the waiting
+ *
+ * Returns 0 in case of success, -ETIMEDOUT when timeout occurs or other
+ * negative value if an error occured.
+ */
+static int
+zl3073x_flash_wait_ready(struct zl3073x_dev *zldev, unsigned int timeout_ms)
+{
+#define ZL3073X_FLASH_POLL_DELAY_MS	100
+	unsigned long timeout;
+	int rc, i = 0;
+
+	dev_dbg(zldev->dev, "Waiting for flashing to be ready\n");
+
+	timeout = jiffies + msecs_to_jiffies(timeout_ms);
+
+	do {
+		u8 value;
+
+		/* Read write_flash register value */
+		rc = zl3073x_read_u8(zldev, ZL_REG_WRITE_FLASH, &value);
+		if (rc)
+			return rc;
+		value = FIELD_GET(ZL_WRITE_FLASH_OP, value);
+
+		/* Check if the current operation was done */
+		if (value == ZL_WRITE_FLASH_OP_DONE)
+			return 0; /* Operation was successfully done */
+
+		/* Check for interrupt each 1s */
+		if (++i > 9) {
+			if (signal_pending(current))
+				return -EINTR;
+			i = 0;
+		}
+
+		msleep(ZL3073X_FLASH_POLL_DELAY_MS);
+	} while (time_before(jiffies, timeout));
+
+	return -ETIMEDOUT;
+}
+
+/**
+ * zl3073x_flash_cmd_wait - Perform flash operation and wait for finish
+ * @zldev: pointer to device structure
+ * @operation: operation that performed
+ *
+ * Return 0 in case of success or negative number when error occured.
+ */
+static int
+zl3073x_flash_cmd_wait(struct zl3073x_dev *zldev, u32 operation)
+{
+#define FLASH_PHASE1_TIMEOUT_MS 60000	/* up to 1 minute */
+#define FLASH_PHASE2_TIMEOUT_MS 120000	/* up to 2 minutes */
+	u32 err_count, err_cause;
+	u8 state, value;
+	int rc;
+
+	dev_dbg(zldev->dev, "Sending flash command: 0x%x\n", operation);
+
+	/* Wait for access */
+	rc = zl3073x_flash_wait_ready(zldev, FLASH_PHASE1_TIMEOUT_MS);
+	if (rc)
+		return rc;
+
+	/* Issue the requested operation */
+	rc = zl3073x_read_u8(zldev, ZL_REG_WRITE_FLASH, &value);
+	if (rc)
+		return rc;
+
+	value &= ~ZL_WRITE_FLASH_OP;
+	value |= FIELD_PREP(ZL_WRITE_FLASH_OP, operation);
+
+	rc = zl3073x_write_u32(zldev, ZL_REG_WRITE_FLASH, value);
+	if (rc) {
+		dev_err(zldev->dev,
+			"Failed to write write flash register: %d\n", rc);
+		return rc;
+	}
+
+	/* Wait for command completion */
+	rc = zl3073x_flash_wait_ready(zldev, FLASH_PHASE2_TIMEOUT_MS);
+	if (rc)
+		return rc;
+
+	/* Check operation status */
+	rc = zl3073x_read_u8(zldev, ZL_REG_OP_STATE, &state);
+	if (rc)
+		return rc;
+
+	/* Check if the operation was done */
+	if (state != ZL_OP_STATE_DONE) {
+		dev_err(zldev->dev,
+			"Invalid operation state: %u\n", state);
+		return -EIO;
+	}
+
+	/* Check error count, non-zero indicates failure */
+	err_count = zl3073x_flash_get_error_count(zldev, &err_cause);
+	if (err_count) {
+		dev_err(zldev->dev,
+			"Flash failure: state=%d, err_count=%d, cause=0x%02x\n",
+			state, err_count, err_cause);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+/**
+ * zl3073x_flash_get_sector_size - Get flash sector size
+ * @zldev: pointer to device structure
+ * @sector_size: sector size returned by the function
+ *
+ * Returns 0 in case of success or negative value otherwise.
+ */
+static int
+zl3073x_flash_get_sector_size(struct zl3073x_dev *zldev, u32 *sector_size)
+{
+	u8 flash_info;
+	int rc;
+
+	rc = zl3073x_read_u8(zldev, ZL_REG_FLASH_INFO, &flash_info);
+	if (rc)
+		return rc;
+
+	switch (FIELD_GET(ZL_FLASH_INFO_SECTOR_SIZE, flash_info)) {
+	case ZL_FLASH_INFO_SECTOR_4K:
+		*sector_size = 0x1000;
+		break;
+	case ZL_FLASH_INFO_SECTOR_64K:
+		*sector_size = 0x10000;
+		break;
+	default:
+		rc = -EINVAL;
+		break;
+	}
+
+	return rc;
+}
+
+/**
+ * zl3073x_flash_sectors - Flash sectors
+ * @zldev: pointer to device structure
+ * @image: flash image with source data
+ * @extack: netlink extack pointer to report errors
+ *
+ * Returns 0 in case of success or negative value otherwise.
+ */
+static int
+zl3073x_flash_sectors(struct zl3073x_dev *zldev,
+		      struct zl3073x_flash_image *image,
+		      struct netlink_ext_ack *extack)
+{
+#define ZL3073X_FLASH_MAX_BLOCK_SIZE	0x0001E000
+#define ZL3073X_FLASH_PAGE_SIZE		0x40 /* in dwords - 256 bytes*/
+	u32 max_bsize, bsize, sector_size, idx, page;
+	int rc;
+
+	/* Get flash sector size */
+	rc = zl3073x_flash_get_sector_size(zldev, &sector_size);
+	if (rc) {
+		FLASH_ERR_MSG(zldev, extack, "Failed to get flash sector size");
+		return rc;
+	}
+
+	max_bsize = ALIGN(ZL3073X_FLASH_MAX_BLOCK_SIZE, sector_size) / 4;
+	page = image->type->flash_page;
+
+	zl3073x_flash_notify(zldev, "Flashing image started",
+			     image->type->name, 0, 0);
+
+	for (idx = 0; idx < image->nwords; idx += bsize) {
+		bsize = min_t(u32, max_bsize, image->nwords - idx);
+
+		/* Download block of image to device memory */
+		rc = zl3073x_flash_download_block(zldev, image, idx, bsize,
+						  extack);
+		if (rc) {
+			FLASH_ERR_MSG(zldev, extack,
+				      "Failed to download data for image %s",
+				      image->type->name);
+			goto finish;
+		}
+
+		/* Set address to flash from */
+		rc = zl3073x_write_u32(zldev, ZL_REG_IMAGE_START_ADDR,
+				       image->type->load_addr);
+		if (rc)
+			goto finish;
+
+		/* Set size of block to flash */
+		rc = zl3073x_write_u32(zldev, ZL_REG_IMAGE_SIZE, bsize * 4);
+		if (rc)
+			goto finish;
+
+		/* Set destination page to flash */
+		rc = zl3073x_write_u32(zldev, ZL_REG_FLASH_INDEX_WRITE, page);
+		if (rc)
+			goto finish;
+
+		/* Set filling pattern */
+		rc = zl3073x_write_u32(zldev, ZL_REG_FILL_PATTERN, U32_MAX);
+		if (rc)
+			goto finish;
+
+		zl3073x_flash_notify(zldev, "Flashing image", image->type->name,
+				     idx, image->nwords);
+
+		dev_dbg(zldev->dev, "Flashing %u dwords to page %u\n", bsize,
+			page);
+
+		/* Execute sectors flash operation */
+		rc = zl3073x_flash_cmd_wait(zldev, ZL_WRITE_FLASH_OP_SECTORS);
+		if (rc)
+			goto finish;
+
+		/* Move to next page */
+		page += bsize / ZL3073X_FLASH_PAGE_SIZE;
+	}
+
+finish:
+	zl3073x_flash_notify(zldev,
+			     rc ?  "Flashing failed" : "Flashing done",
+			     image->type->name, 0, 0);
+
+	return rc;
 }
 
 /**
