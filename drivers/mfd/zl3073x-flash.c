@@ -540,16 +540,19 @@ static void zl3073x_flash_notify(struct zl3073x_dev *zldev, const char *msg,
 }
 
 /**
- * zl3073x_flash_download_image - Download image to device memory
+ * zl3073x_flash_download_block - Download image block to device memory
  * @zldev - zl3073x device structure
  * @image - image to be downloaded
+ * @start - start position (in 32-bit words)
+ * @size - size to download (in 32-bit words)
  * @extack: netlink extack pointer to report errors
  *
  * Returns 0 in case of success or negative value otherwise.
  */
 static int
-zl3073x_flash_download_image(struct zl3073x_dev *zldev,
+zl3073x_flash_download_block(struct zl3073x_dev *zldev,
 			     struct zl3073x_flash_image *image,
+			     u32 start, u32 size,
 			     struct netlink_ext_ack *extack)
 {
 #define CHECK_DELAY	5000 /* Check for interrupt each 5 seconds */
@@ -558,8 +561,12 @@ zl3073x_flash_download_image(struct zl3073x_dev *zldev,
 	u32 idx, dest_addr;
 	int rc;
 
-	dev_info(zldev->dev, "Loading %u words to device memory at 0x%0x\n",
-		 image->nwords, image->type->load_addr);
+	if ((start + size) > image->nwords)
+		return -EINVAL;
+
+	dev_info(zldev->dev,
+		 "Loading block [%u..%u] to device memory at 0x%0x\n",
+		 start, start + size, image->type->load_addr);
 
 	/* Send devlink flash notification */
 	zl3073x_flash_notify(zldev, "Downloading image started",
@@ -568,7 +575,7 @@ zl3073x_flash_download_image(struct zl3073x_dev *zldev,
 	timeout = jiffies + msecs_to_jiffies(CHECK_DELAY);
 
 	dest_addr = image->type->load_addr;
-	for (idx = 0; idx < image->nwords; idx++, dest_addr += 4) {
+	for (idx = start; idx < start + size; idx++, dest_addr += 4) {
 		/* Write current word to HW memory */
 		rc = zl3073x_hwreg_write(zldev, dest_addr, image->words[idx]);
 		if (rc) {
@@ -598,7 +605,7 @@ zl3073x_flash_download_image(struct zl3073x_dev *zldev,
 		}
 	}
 
-	dev_info(dev, "%u words written to device memory\n", image->nwords);
+	dev_info(dev, "%u words written to device memory\n", size);
 
 error:
 	/* Send final notification - success or failure */
@@ -607,6 +614,22 @@ error:
 			     image->type->name, 0, 0);
 
 	return rc;
+}
+
+/**
+ * zl3073x_flash_download_image - Download image to device memory
+ * @zldev - zl3073x device structure
+ * @image - image to be downloaded
+ * @extack: netlink extack pointer to report errors
+ *
+ * Returns 0 in case of success or negative value otherwise.
+ */
+static int zl3073x_flash_download_image(struct zl3073x_dev *zldev,
+					struct zl3073x_flash_image *image,
+					struct netlink_ext_ack *extack)
+{
+	return zl3073x_flash_download_block(zldev, image, 0, image->nwords,
+					    extack);
 }
 
 /**
