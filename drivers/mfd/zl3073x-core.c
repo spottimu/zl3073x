@@ -6,6 +6,7 @@
 #include <linux/device.h>
 #include <linux/export.h>
 #include <linux/math64.h>
+#include <linux/mfd/core.h>
 #include <linux/mfd/zl3073x.h>
 #include <linux/mfd/zl3073x_regs.h>
 #include <linux/module.h>
@@ -773,6 +774,20 @@ int zl3073x_dev_probe(struct zl3073x_dev *zldev,
 	rc = zl3073x_dev_state_fetch(zldev);
 	if (rc)
 		return rc;
+
+	/* Add DPLL sub-device cell for each DPLL channel */
+	for (i = 0; i < chip_info->num_channels; i++) {
+		struct mfd_cell dpll_dev = MFD_CELL_BASIC("zl3073x-dpll", NULL,
+							  NULL, 0, i);
+
+		rc = devm_mfd_add_devices(zldev->dev, PLATFORM_DEVID_AUTO,
+					  &dpll_dev, 1, NULL, 0, NULL);
+		if (rc) {
+			dev_err_probe(zldev->dev, rc,
+				      "Failed to add DPLL sub-device\n");
+			return rc;
+		}
+	}
 
 	/* Register the device as devlink device */
 	devlink = priv_to_devlink(zldev);
