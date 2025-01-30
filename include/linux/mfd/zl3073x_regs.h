@@ -106,6 +106,129 @@ zl3073x_read_custom_config_ver(struct zl3073x_dev *zldev, u32 *value)
 	return rc;
 }
 
+/*************************
+ * Register Page 2, Status
+ *************************/
+
+/*
+ * Register array 'ref_mon_status'
+ * Page: 2, Offset: 0x02, Size: 8 bits, Items: 10, Stride: 1
+ */
+#define ZL_REG_REF_MON_STATUS	     ZL_REG_ADDR(2, 0x02)
+#define ZL_REG_REF_MON_STATUS_ITEMS  ZL3073X_NUM_INPUT_PINS
+#define ZL_REG_REF_MON_STATUS_STRIDE 1
+#define ZL_REF_MON_STATUS_OK	     0 /* all bits zeroed */
+
+static inline __maybe_unused int
+zl3073x_read_ref_mon_status(struct zl3073x_dev *zldev, unsigned int idx,
+			    u8 *value)
+{
+	unsigned int addr, v;
+	int rc;
+
+	if (idx >= ZL_REG_REF_MON_STATUS_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_REF_MON_STATUS + idx * ZL_REG_REF_MON_STATUS_STRIDE;
+	rc = regmap_read(zldev->regmap, addr, &v);
+	*value = v;
+	return rc;
+}
+
+/*
+ * Register array 'dpll_mon_status'
+ * Page: 2, Offset: 0x10, Size: 8 bits, Items: 5, Stride: 1
+ */
+#define ZL_REG_DPLL_MON_STATUS	      ZL_REG_ADDR(2, 0x10)
+#define ZL_REG_DPLL_MON_STATUS_ITEMS  ZL3073X_MAX_CHANNELS
+#define ZL_REG_DPLL_MON_STATUS_STRIDE 1
+#define ZL_DPLL_MON_STATUS_LOCK	      BIT(0)
+#define ZL_DPLL_MON_STATUS_HO	      BIT(1)
+#define ZL_DPLL_MON_STATUS_HO_READY   BIT(2)
+
+static inline __maybe_unused int
+zl3073x_read_dpll_mon_status(struct zl3073x_dev *zldev, unsigned int idx,
+			     u8 *value)
+{
+	unsigned int addr, v;
+	int rc;
+
+	if (idx >= ZL_REG_DPLL_MON_STATUS_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_DPLL_MON_STATUS + idx * ZL_REG_DPLL_MON_STATUS_STRIDE;
+	rc = regmap_read(zldev->regmap, addr, &v);
+	*value = v;
+	return rc;
+}
+
+/*
+ * Register array 'dpll_refsel_status'
+ * Page: 2, Offset: 0x30, Size: 8 bits, Items: 5, Stride: 1
+ */
+#define ZL_REG_DPLL_REFSEL_STATUS	      ZL_REG_ADDR(2, 0x30)
+#define ZL_REG_DPLL_REFSEL_STATUS_ITEMS	      ZL3073X_MAX_CHANNELS
+#define ZL_REG_DPLL_REFSEL_STATUS_STRIDE      1
+#define ZL_DPLL_REFSEL_STATUS_REFSEL	      GENMASK(3, 0)
+#define ZL_DPLL_REFSEL_STATUS_STATE	      GENMASK(6, 4)
+#define ZL_DPLL_REFSEL_STATUS_STATE_FREERUN   0
+#define ZL_DPLL_REFSEL_STATUS_STATE_HOLDOVER  1
+#define ZL_DPLL_REFSEL_STATUS_STATE_FASTLOCK  2
+#define ZL_DPLL_REFSEL_STATUS_STATE_ACQUIRING 3
+#define ZL_DPLL_REFSEL_STATUS_STATE_LOCK      4
+
+static inline __maybe_unused int
+zl3073x_read_dpll_refsel_status(struct zl3073x_dev *zldev, unsigned int idx,
+				u8 *value)
+{
+	unsigned int addr, v;
+	int rc;
+
+	if (idx >= ZL_REG_DPLL_REFSEL_STATUS_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_DPLL_REFSEL_STATUS +
+	       idx * ZL_REG_DPLL_REFSEL_STATUS_STRIDE;
+	rc = regmap_read(zldev->regmap, addr, &v);
+	*value = v;
+	return rc;
+}
+
+/***********************
+ * Register Page 5, DPLL
+ ***********************/
+
+/*
+ * Register array 'dpll_mode_refsel'
+ * Page: 5, Offset: 0x04, Size: 8 bits, Items: 5, Stride: 4
+ */
+#define ZL_REG_DPLL_MODE_REFSEL		  ZL_REG_ADDR(5, 0x04)
+#define ZL_REG_DPLL_MODE_REFSEL_ITEMS	  ZL3073X_MAX_CHANNELS
+#define ZL_REG_DPLL_MODE_REFSEL_STRIDE	  4
+#define ZL_DPLL_MODE_REFSEL_MODE	  GENMASK(2, 0)
+#define ZL_DPLL_MODE_REFSEL_MODE_FREERUN  0
+#define ZL_DPLL_MODE_REFSEL_MODE_HOLDOVER 1
+#define ZL_DPLL_MODE_REFSEL_MODE_REFLOCK  2
+#define ZL_DPLL_MODE_REFSEL_MODE_AUTO	  3
+#define ZL_DPLL_MODE_REFSEL_MODE_NCO	  4
+#define ZL_DPLL_MODE_REFSEL_REF		  GENMASK(7, 4)
+
+static inline __maybe_unused int
+zl3073x_read_dpll_mode_refsel(struct zl3073x_dev *zldev, unsigned int idx,
+			      u8 *value)
+{
+	unsigned int addr, v;
+	int rc;
+
+	if (idx >= ZL_REG_DPLL_MODE_REFSEL_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_DPLL_MODE_REFSEL + idx * ZL_REG_DPLL_MODE_REFSEL_STRIDE;
+	rc = regmap_read(zldev->regmap, addr, &v);
+	*value = v;
+	return rc;
+}
+
 /***********************************
  * Register Page 9, Synth and Output
  ***********************************/
@@ -115,7 +238,7 @@ zl3073x_read_custom_config_ver(struct zl3073x_dev *zldev, u32 *value)
  * Page: 9, Offset: 0x00, Size: 8 bits, Items: 5, Stride: 1
  */
 #define ZL_REG_SYNTH_CTRL	 ZL_REG_ADDR(9, 0x00)
-#define ZL_REG_SYNTH_CTRL_ITEMS	 5
+#define ZL_REG_SYNTH_CTRL_ITEMS	 ZL3073X_NUM_SYNTHS
 #define ZL_REG_SYNTH_CTRL_STRIDE 1
 #define ZL_SYNTH_CTRL_EN	 BIT(0)
 #define ZL_SYNTH_CTRL_DPLL_SEL	 GENMASK(6, 4)
@@ -140,7 +263,7 @@ zl3073x_read_synth_ctrl(struct zl3073x_dev *zldev, unsigned int idx, u8 *value)
  * Page: 9, Offset: 0x28, Size: 8 bits, Items: 10, Stride: 1
  */
 #define ZL_REG_OUTPUT_CTRL	  ZL_REG_ADDR(9, 0x28)
-#define ZL_REG_OUTPUT_CTRL_ITEMS  10
+#define ZL_REG_OUTPUT_CTRL_ITEMS  ZL3073X_NUM_OUTPUTS
 #define ZL_REG_OUTPUT_CTRL_STRIDE 1
 #define ZL_OUTPUT_CTRL_EN	  BIT(0)
 #define ZL_OUTPUT_CTRL_STOP	  BIT(1)
@@ -161,6 +284,108 @@ zl3073x_read_output_ctrl(struct zl3073x_dev *zldev, unsigned int idx, u8 *value)
 	rc = regmap_read(zldev->regmap, addr, &v);
 	*value = v;
 	return rc;
+}
+
+/*
+ * Register 'synth_phase_shift_ctrl'
+ * Page: 9, Offset: 0x1e, Size: 8 bits
+ */
+#define ZL_REG_SYNTH_PHASE_SHIFT_CTRL ZL_REG_ADDR(9, 0x1e)
+
+static inline __maybe_unused int
+zl3073x_read_synth_phase_shift_ctrl(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_SYNTH_PHASE_SHIFT_CTRL, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_synth_phase_shift_ctrl(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_SYNTH_PHASE_SHIFT_CTRL,
+			    value);
+}
+
+/*
+ * Register 'synth_phase_shift_mask'
+ * Page: 9, Offset: 0x1f, Size: 8 bits
+ */
+#define ZL_REG_SYNTH_PHASE_SHIFT_MASK ZL_REG_ADDR(9, 0x1f)
+
+static inline __maybe_unused int
+zl3073x_read_synth_phase_shift_mask(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_SYNTH_PHASE_SHIFT_MASK, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_synth_phase_shift_mask(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_SYNTH_PHASE_SHIFT_MASK,
+			    value);
+}
+
+/*
+ * Register 'synth_phase_shift_intvl'
+ * Page: 9, Offset: 0x20, Size: 8 bits
+ */
+#define ZL_REG_SYNTH_PHASE_SHIFT_INTVL ZL_REG_ADDR(9, 0x20)
+
+static inline __maybe_unused int
+zl3073x_read_synth_phase_shift_intvl(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_SYNTH_PHASE_SHIFT_INTVL, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_synth_phase_shift_intvl(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_SYNTH_PHASE_SHIFT_INTVL,
+			    value);
+}
+
+/*
+ * Register 'synth_phase_shift_data'
+ * Page: 9, Offset: 0x21, Size: 16 bits
+ */
+#define ZL_REG_SYNTH_PHASE_SHIFT_DATA ZL_REG_ADDR(9, 0x21)
+
+static inline __maybe_unused int
+zl3073x_read_synth_phase_shift_data(struct zl3073x_dev *zldev, u16 *value)
+{
+	__be16 temp;
+	int rc;
+
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_SYNTH_PHASE_SHIFT_DATA,
+			      &temp, sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be16_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_synth_phase_shift_data(struct zl3073x_dev *zldev, u16 value)
+{
+	__be16 temp;
+	temp = cpu_to_be16(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_SYNTH_PHASE_SHIFT_DATA,
+				 &temp, sizeof(temp));
 }
 
 /*******************************
@@ -331,6 +556,35 @@ zl3073x_mb_poll_dpll_mb_sem(struct zl3073x_dev *zldev, u8 bitmask)
 	return regmap_read_poll_timeout(zldev->regmap, ZL_REG_DPLL_MB_SEM, v,
 					!(v & bitmask), ZL_POLL_SLEEP_US,
 					ZL_POLL_TIMEOUT_US);
+}
+
+/*
+ * Register array 'dpll_ref_prio'
+ * Page: 12, Offset: 0x52, Size: 8 bits, Items: 5, Stride: 1
+ */
+#define ZL_REG_DPLL_REF_PRIO	    ZL_REG_ADDR(12, 0x52)
+#define ZL_REG_DPLL_REF_PRIO_ITEMS  ZL3073X_NUM_INPUT_PINS / 2
+#define ZL_REG_DPLL_REF_PRIO_STRIDE 1
+#define ZL_DPLL_REF_PRIO_REF_P	    GENMASK(3, 0)
+#define ZL_DPLL_REF_PRIO_REF_N	    GENMASK(7, 4)
+#define ZL_DPLL_REF_PRIO_MAX	    14
+#define ZL_DPLL_REF_PRIO_NONE	    15 /* non-selectable */
+
+static inline __maybe_unused int
+zl3073x_mb_read_dpll_ref_prio(struct zl3073x_dev *zldev, unsigned int idx,
+			      u8 *value)
+{
+	unsigned int addr, v;
+	int rc;
+
+	if (idx >= ZL_REG_DPLL_REF_PRIO_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_DPLL_REF_PRIO + idx * ZL_REG_DPLL_REF_PRIO_STRIDE;
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_read(zldev->regmap, addr, &v);
+	*value = v;
+	return rc;
 }
 
 /*********************************
