@@ -5,6 +5,7 @@
 
 #include <linux/bitfield.h>
 #include <linux/bits.h>
+#include <linux/mfd/zl3073x.h>
 
 /*
  * Register address structure:
@@ -61,5 +62,52 @@
  */
 #define ZL_REG(_page, _offset, _size)					\
 	ZL_REG_IDX(0, _page, _offset, _size, 1, 0)
+
+/*************************
+ * Register Page 2, Status
+ *************************/
+
+#define ZL_REG_REF_MON_STATUS(_idx)					\
+	ZL_REG_IDX(_idx, 2, 0x02, 1, ZL3073X_NUM_INPUT_PINS, 1)
+#define ZL_REF_MON_STATUS_OK			0 /* all bits zeroed */
+
+#define ZL_REG_DPLL_MON_STATUS(_idx)					\
+	ZL_REG_IDX(_idx, 2, 0x10, 1, ZL3073X_MAX_CHANNELS, 1)
+#define ZL_DPLL_MON_STATUS_LOCK			BIT(0)
+#define ZL_DPLL_MON_STATUS_HO			BIT(1)
+#define ZL_DPLL_MON_STATUS_HO_READY		BIT(2)
+
+#define ZL_REG_DPLL_REFSEL_STATUS(_idx)					\
+	ZL_REG_IDX(_idx, 2, 0x30, 1, ZL3073X_MAX_CHANNELS, 1)
+#define ZL_DPLL_REFSEL_STATUS_REFSEL		GENMASK(3, 0)
+#define ZL_DPLL_REFSEL_STATUS_STATE		GENMASK(6, 4)
+#define ZL_DPLL_REFSEL_STATUS_STATE_FREERUN	0
+#define ZL_DPLL_REFSEL_STATUS_STATE_HOLDOVER	1
+#define ZL_DPLL_REFSEL_STATUS_STATE_FASTLOCK	2
+#define ZL_DPLL_REFSEL_STATUS_STATE_ACQUIRING	3
+#define ZL_DPLL_REFSEL_STATUS_STATE_LOCK	4
+
+/***********************
+ * Register Page 5, DPLL
+ ***********************/
+
+#define ZL_REG_DPLL_MODE_REFSEL(_idx)					\
+	ZL_REG_IDX(_idx, 5, 0x04, 1, ZL3073X_MAX_CHANNELS, 4)
+#define ZL_DPLL_MODE_REFSEL_MODE		GENMASK(2, 0)
+#define ZL_DPLL_MODE_REFSEL_MODE_FREERUN	0
+#define ZL_DPLL_MODE_REFSEL_MODE_HOLDOVER	1
+#define ZL_DPLL_MODE_REFSEL_MODE_REFLOCK	2
+#define ZL_DPLL_MODE_REFSEL_MODE_AUTO		3
+#define ZL_DPLL_MODE_REFSEL_MODE_NCO		4
+#define ZL_DPLL_MODE_REFSEL_REF			GENMASK(7, 4)
+
+/***********************************
+ * Register Page 9, Synth and Output
+ ***********************************/
+
+#define ZL_REG_SYNTH_PHASE_SHIFT_CTRL		ZL_REG(9, 0x1e, 1)
+#define ZL_REG_SYNTH_PHASE_SHIFT_MASK		ZL_REG(9, 0x1f, 1)
+#define ZL_REG_SYNTH_PHASE_SHIFT_INTVL		ZL_REG(9, 0x20, 1)
+#define ZL_REG_SYNTH_PHASE_SHIFT_DATA		ZL_REG(9, 0x21, 2)
 
 #endif /* __LINUX_MFD_ZL3073X_REGS_H */
