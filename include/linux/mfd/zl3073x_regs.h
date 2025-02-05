@@ -477,6 +477,138 @@ zl3073x_mb_poll_ref_mb_sem(struct zl3073x_dev *zldev, u8 bitmask)
 }
 
 /*
+ * Register 'ref_freq_base'
+ * Page: 10, Offset: 0x05, Size: 16 bits
+ */
+#define ZL_REG_REF_FREQ_BASE ZL_REG_ADDR(10, 0x05)
+
+static inline __maybe_unused int
+zl3073x_mb_read_ref_freq_base(struct zl3073x_dev *zldev, u16 *value)
+{
+	__be16 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_REF_FREQ_BASE, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be16_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_ref_freq_base(struct zl3073x_dev *zldev, u16 value)
+{
+	__be16 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be16(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_REF_FREQ_BASE, &temp,
+				 sizeof(temp));
+}
+
+/*
+ * Register 'ref_freq_mult'
+ * Page: 10, Offset: 0x07, Size: 16 bits
+ */
+#define ZL_REG_REF_FREQ_MULT ZL_REG_ADDR(10, 0x07)
+
+static inline __maybe_unused int
+zl3073x_mb_read_ref_freq_mult(struct zl3073x_dev *zldev, u16 *value)
+{
+	__be16 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_REF_FREQ_MULT, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be16_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_ref_freq_mult(struct zl3073x_dev *zldev, u16 value)
+{
+	__be16 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be16(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_REF_FREQ_MULT, &temp,
+				 sizeof(temp));
+}
+
+/*
+ * Register 'ref_ratio_m'
+ * Page: 10, Offset: 0x09, Size: 16 bits
+ */
+#define ZL_REG_REF_RATIO_M ZL_REG_ADDR(10, 0x09)
+
+static inline __maybe_unused int
+zl3073x_mb_read_ref_ratio_m(struct zl3073x_dev *zldev, u16 *value)
+{
+	__be16 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_REF_RATIO_M, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be16_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_ref_ratio_m(struct zl3073x_dev *zldev, u16 value)
+{
+	__be16 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be16(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_REF_RATIO_M, &temp,
+				 sizeof(temp));
+}
+
+/*
+ * Register 'ref_ratio_n'
+ * Page: 10, Offset: 0x0b, Size: 16 bits
+ */
+#define ZL_REG_REF_RATIO_N ZL_REG_ADDR(10, 0x0b)
+
+static inline __maybe_unused int
+zl3073x_mb_read_ref_ratio_n(struct zl3073x_dev *zldev, u16 *value)
+{
+	__be16 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_REF_RATIO_N, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be16_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_ref_ratio_n(struct zl3073x_dev *zldev, u16 value)
+{
+	__be16 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be16(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_REF_RATIO_N, &temp,
+				 sizeof(temp));
+}
+
+/*
  * Register 'ref_config'
  * Page: 10, Offset: 0x0d, Size: 8 bits
  */
