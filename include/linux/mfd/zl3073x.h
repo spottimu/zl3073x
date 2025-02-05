@@ -13,11 +13,13 @@ struct regmap;
  * @dev: pointer to device
  * @regmap: regmap to access device registers
  * @mailbox_lock: mutex protecting an access to mailbox registers
+ * @clock_id: clock id of the device
  */
 struct zl3073x_dev {
 	struct device		*dev;
 	struct regmap		*regmap;
 	struct mutex		mailbox_lock;
+	u64			clock_id;
 };
 
 /**
