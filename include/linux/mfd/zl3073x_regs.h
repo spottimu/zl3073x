@@ -600,6 +600,20 @@ zl3073x_mb_read_dpll_ref_prio(struct zl3073x_dev *zldev, unsigned int idx,
 	return rc;
 }
 
+static inline __maybe_unused int
+zl3073x_mb_write_dpll_ref_prio(struct zl3073x_dev *zldev, unsigned int idx,
+			       u8 value)
+{
+	unsigned int addr;
+
+	if (idx >= ZL_REG_DPLL_REF_PRIO_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_DPLL_REF_PRIO + idx * ZL_REG_DPLL_REF_PRIO_STRIDE;
+	lockdep_assert_held(&zldev->mailbox_lock);
+	return regmap_write(zldev->regmap, addr, value);
+}
+
 /*********************************
  * Register Page 13, Synth Mailbox
  *********************************/
