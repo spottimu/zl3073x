@@ -1003,4 +1003,136 @@ zl3073x_mb_read_output_mode(struct zl3073x_dev *zldev, u8 *value)
 	return rc;
 }
 
+/*
+ * Register 'output_div'
+ * Page: 14, Offset: 0x0c, Size: 32 bits
+ */
+#define ZL_REG_OUTPUT_DIV ZL_REG_ADDR(14, 0x0c)
+
+static inline __maybe_unused int
+zl3073x_mb_read_output_div(struct zl3073x_dev *zldev, u32 *value)
+{
+	__be32 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_OUTPUT_DIV, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_output_div(struct zl3073x_dev *zldev, u32 value)
+{
+	__be32 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be32(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_OUTPUT_DIV, &temp,
+				 sizeof(temp));
+}
+
+/*
+ * Register 'output_width'
+ * Page: 14, Offset: 0x10, Size: 32 bits
+ */
+#define ZL_REG_OUTPUT_WIDTH ZL_REG_ADDR(14, 0x10)
+
+static inline __maybe_unused int
+zl3073x_mb_read_output_width(struct zl3073x_dev *zldev, u32 *value)
+{
+	__be32 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_OUTPUT_WIDTH, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_output_width(struct zl3073x_dev *zldev, u32 value)
+{
+	__be32 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be32(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_OUTPUT_WIDTH, &temp,
+				 sizeof(temp));
+}
+
+/*
+ * Register 'output_ndiv_period'
+ * Page: 14, Offset: 0x14, Size: 32 bits
+ */
+#define ZL_REG_OUTPUT_NDIV_PERIOD ZL_REG_ADDR(14, 0x14)
+
+static inline __maybe_unused int
+zl3073x_mb_read_output_ndiv_period(struct zl3073x_dev *zldev, u32 *value)
+{
+	__be32 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_OUTPUT_NDIV_PERIOD, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_output_ndiv_period(struct zl3073x_dev *zldev, u32 value)
+{
+	__be32 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be32(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_OUTPUT_NDIV_PERIOD,
+				 &temp, sizeof(temp));
+}
+
+/*
+ * Register 'output_ndiv_width'
+ * Page: 14, Offset: 0x18, Size: 32 bits
+ */
+#define ZL_REG_OUTPUT_NDIV_WIDTH ZL_REG_ADDR(14, 0x18)
+
+static inline __maybe_unused int
+zl3073x_mb_read_output_ndiv_width(struct zl3073x_dev *zldev, u32 *value)
+{
+	__be32 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_OUTPUT_NDIV_WIDTH, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_output_ndiv_width(struct zl3073x_dev *zldev, u32 value)
+{
+	__be32 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be32(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_OUTPUT_NDIV_WIDTH, &temp,
+				 sizeof(temp));
+}
+
 #endif /* __LINUX_MFD_ZL3073X_REGS_H */
