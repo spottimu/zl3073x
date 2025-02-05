@@ -9,6 +9,7 @@
 #include <linux/dpll.h>
 #include <linux/err.h>
 #include <linux/kthread.h>
+#include <linux/math64.h>
 #include <linux/mfd/core.h>
 #include <linux/mfd/zl3073x.h>
 #include <linux/mfd/zl3073x-regs.h>
@@ -170,6 +171,141 @@ zl3073x_dpll_pin_direction_get(const struct dpll_pin *dpll_pin, void *pin_priv,
 		*direction = DPLL_PIN_DIRECTION_OUTPUT;
 
 	return 0;
+}
+
+/**
+ * zl3073x_dpll_input_ref_frequency_factorize - factorize given frequency
+ * @freq: input frequency
+ * @base: base frequency
+ * @mult: multiplier
+ *
+ * Checks if the given frequency can be factorized using one of the
+ * supported base frequencies. If so the base frequency and multiplier
+ * are stored into appropriate parameters if they are not NULL.
+ *
+ * Return: 0 on success, -EINVAL if the frequency cannot be factorized
+ */
+static int
+zl3073x_dpll_input_ref_frequency_factorize(u64 freq, u16 *base, u16 *mult)
+{
+	static const u16 base_freqs[] = {
+		1, 2, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 64, 80, 100, 125,
+		128, 160, 200, 250, 256, 320, 400, 500, 625, 640, 800, 1000,
+		1250, 1280, 1600, 2000, 2500, 3125, 3200, 4000, 5000, 6250,
+		6400, 8000, 10000, 12500, 15625, 16000, 20000, 25000, 31250,
+		32000, 40000, 50000, 62500,
+	};
+	u32 div, rem;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(base_freqs); i++) {
+		div = div_u64_rem(freq, base_freqs[i], &rem);
+		if (!rem && div <= U16_MAX) {
+			if (base)
+				*base = base_freqs[i];
+			if (mult)
+				*mult = div;
+
+			return 0;
+		}
+	}
+
+	return -EINVAL;
+}
+
+/**
+ * zl3073x_dpll_input_ref_frequency_get - get input reference frequency
+ * @zldev: pointer to device structure
+ * @ref_id: reference id
+ * @frequency: pointer to variable to store frequency
+ *
+ * Reads frequency of given input reference.
+ *
+ * Return: 0 on success, <0 on error
+ */
+static int
+zl3073x_dpll_input_ref_frequency_get(struct zl3073x_dev *zldev, u8 ref_id,
+				     u64 *frequency)
+{
+	struct zl3073x_mb_ref mb;
+	int rc;
+
+	/* Read reference configuration into mailbox */
+	rc = zl3073x_mb_ref_read(zldev, ref_id,
+				 ZL3073X_MB_REF_FREQ_BASE |
+				 ZL3073X_MB_REF_FREQ_MULT |
+				 ZL3073X_MB_REF_RATIO_M |
+				 ZL3073X_MB_REF_RATIO_N, &mb);
+	if (rc)
+		return rc;
+
+	/* Sanity check that HW has not returned zero denominator */
+	if (!mb.ratio_n) {
+		dev_err(zldev->dev,
+			"Zero divisor for ref %u frequency got from device\n",
+			ref_id);
+		return -EINVAL;
+	}
+
+	*frequency = mul_u64_u32_div(mb.freq_base * mb.freq_mult, mb.ratio_n,
+				     mb.ratio_n);
+
+	return rc;
+}
+
+static int
+zl3073x_dpll_input_pin_frequency_get(const struct dpll_pin *dpll_pin,
+				     void *pin_priv,
+				     const struct dpll_device *dpll,
+				     void *dpll_priv, u64 *frequency,
+				     struct netlink_ext_ack *extack)
+{
+	struct zl3073x_dpll *zldpll = dpll_priv;
+	struct zl3073x_dev *zldev = zldpll->mfd;
+	struct zl3073x_dpll_pin *pin = pin_priv;
+	u8 ref_id;
+
+	/* Get index of the pin */
+	ref_id = zl3073x_dpll_pin_index_get(pin);
+
+	/* Read and return ref frequency */
+	return zl3073x_dpll_input_ref_frequency_get(zldev, ref_id, frequency);
+}
+
+static int
+zl3073x_dpll_input_pin_frequency_set(const struct dpll_pin *dpll_pin,
+				     void *pin_priv,
+				     const struct dpll_device *dpll,
+				     void *dpll_priv, u64 frequency,
+				     struct netlink_ext_ack *extack)
+{
+	struct zl3073x_dpll *zldpll = dpll_priv;
+	struct zl3073x_dev *zldev = zldpll->mfd;
+	struct zl3073x_dpll_pin *pin = pin_priv;
+	struct zl3073x_mb_ref mb;
+	u8 ref_id;
+	int rc;
+
+	/* Get base frequency and multiplier for the requested frequency */
+	rc = zl3073x_dpll_input_ref_frequency_factorize(frequency,
+							&mb.freq_base,
+							&mb.freq_mult);
+	if (rc)
+		return rc;
+
+	/* Set FEC ratio to 1:1 */
+	mb.ratio_m = 1;
+	mb.ratio_n = 1;
+
+	/* Get index of the pin */
+	ref_id = zl3073x_dpll_pin_index_get(pin);
+
+	/* Update reference configuration from mailbox */
+	return zl3073x_mb_ref_write(zldev, ref_id,
+				    ZL3073X_MB_REF_FREQ_BASE |
+				    ZL3073X_MB_REF_FREQ_MULT |
+				    ZL3073X_MB_REF_RATIO_M |
+				    ZL3073X_MB_REF_RATIO_N, &mb);
 }
 
 /**
@@ -638,6 +774,8 @@ zl3073x_dpll_mode_get(const struct dpll_device *dpll, void *dpll_priv,
 
 static const struct dpll_pin_ops zl3073x_dpll_input_pin_ops = {
 	.direction_get = zl3073x_dpll_pin_direction_get,
+	.frequency_get = zl3073x_dpll_input_pin_frequency_get,
+	.frequency_set = zl3073x_dpll_input_pin_frequency_set,
 	.prio_get = zl3073x_dpll_input_pin_prio_get,
 	.prio_set = zl3073x_dpll_input_pin_prio_set,
 	.state_on_dpll_get = zl3073x_dpll_input_pin_state_on_dpll_get,
