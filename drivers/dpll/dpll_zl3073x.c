@@ -700,6 +700,219 @@ zl3073x_dpll_input_pin_prio_set(const struct dpll_pin *dpll_pin, void *pin_priv,
 	return 0;
 }
 
+static u8
+zl3073x_dpll_pin_synth_get(struct zl3073x_dpll_pin *pin)
+{
+	u8 output = zl3073x_dpll_output_pin_output_get(pin);
+
+	return zl3073x_output_synth_get(pin_to_dev(pin), output);
+}
+
+static int
+zl3073x_dpll_output_pin_frequency_get(const struct dpll_pin *dpll_pin,
+				      void *pin_priv,
+				      const struct dpll_device *dpll,
+				      void *dpll_priv, u64 *frequency,
+				      struct netlink_ext_ack *extack)
+{
+	struct zl3073x_dpll *zldpll = dpll_priv;
+	struct zl3073x_dev *zldev = zldpll->mfd;
+	struct zl3073x_dpll_pin *pin = pin_priv;
+	struct zl3073x_mb_output mb;
+	u8 output, signal_format, synth;
+	u64 synth_freq;
+	int rc;
+
+	output = zl3073x_dpll_output_pin_output_get(pin);
+	synth = zl3073x_dpll_pin_synth_get(pin);
+	synth_freq = zl3073x_synth_freq_get(zldev, synth);
+
+	/* Read output configuration into mailbox */
+	rc = zl3073x_mb_output_read(zldev, output,
+				    ZL3073X_MB_OUTPUT_DIV |
+				    ZL3073X_MB_OUTPUT_ESYNC_PERIOD, &mb);
+	if (rc)
+		return rc;
+
+	/* Check output divisor for zero */
+	if (!mb.div) {
+		dev_err(zldev->dev,
+			"Zero divisor for output %u got from device\n",
+			output);
+		return -EINVAL;
+	}
+
+	/* Read used signal format for the given output */
+	signal_format = zl3073x_output_signal_format_get(zldev, output);
+
+	switch (signal_format) {
+	case ZL_OUTPUT_MODE_SIGNAL_FORMAT_2_NDIV:
+	case ZL_OUTPUT_MODE_SIGNAL_FORMAT_2_NDIV_INV:
+		/* In case of divided format we have to distiguish between
+		 * given output pin type.
+		 */
+		if (zl3073x_dpll_is_p_pin(pin)) {
+			/* For P-pin the resulting frequency is computed as
+			 * simple division of synth frequency and output
+			 * divisor.
+			 */
+			*frequency = div_u64(synth_freq, mb.div);
+		} else {
+			/* For N-pin we have to divide additionally by
+			 * divisor stored in esync_period output mailbox
+			 * register that is used as N-pin divisor for these
+			 * modes.
+			 */
+			u64 divisor;
+
+			/* Check N-pin divisor for zero */
+			if (!mb.esync_period) {
+				dev_err(zldev->dev,
+					"Zero N-pin divisor for output %u got from device\n",
+					output);
+				return -EINVAL;
+			}
+
+			/* Compute final divisor for N-pin */
+			divisor = mul_u32_u32(mb.div, mb.esync_period);
+			*frequency = div64_u64(synth_freq, divisor);
+		}
+		break;
+	default:
+		/* In other modes the resulting frequency is computed as
+		 * division of synth frequency and output divisor.
+		 */
+		*frequency = div_u64(synth_freq, mb.div);
+		break;
+	}
+
+	return rc;
+}
+
+static int
+zl3073x_dpll_output_pin_frequency_set(const struct dpll_pin *dpll_pin,
+				      void *pin_priv,
+				      const struct dpll_device *dpll,
+				      void *dpll_priv, u64 frequency,
+				      struct netlink_ext_ack *extack)
+{
+	struct zl3073x_dpll *zldpll = dpll_priv;
+	struct zl3073x_dev *zldev = zldpll->mfd;
+	struct zl3073x_dpll_pin *pin = pin_priv;
+	u32 output_n_freq, output_p_freq;
+	u8 output, signal_format, synth;
+	struct zl3073x_mb_output mb;
+	u64 rem, synth_freq;
+	u32 mask, new_div;
+	int rc;
+
+	output = zl3073x_dpll_output_pin_output_get(pin);
+	synth = zl3073x_dpll_pin_synth_get(pin);
+	synth_freq = zl3073x_synth_freq_get(zldev, synth);
+
+	/* Compute new divisor and check the remainder to be zero as
+	 * the requested frequency has to divide synthesizer frequency
+	 */
+	new_div = (u32)div64_u64_rem(synth_freq, frequency, &rem);
+	if (rem) {
+		dev_err(zldev->dev,
+			"The requested frequency must divide %llu Hz\n",
+			synth_freq);
+		return -EINVAL;
+	}
+
+	/* Get used signal format for the given output */
+	signal_format = zl3073x_output_signal_format_get(zldev, output);
+
+	/* Check signal format */
+	if (signal_format != ZL_OUTPUT_MODE_SIGNAL_FORMAT_2_NDIV &&
+	    signal_format != ZL_OUTPUT_MODE_SIGNAL_FORMAT_2_NDIV_INV) {
+		/* For non N-divided signal formats the frequency is computed
+		 * as division of synth frequency and output divisor.
+		 */
+		mask = ZL3073X_MB_OUTPUT_DIV;
+		mb.div = new_div;
+
+		/* For 50/50 duty cycle the divisor is equal to width */
+		mask |= ZL3073X_MB_OUTPUT_WIDTH;
+		mb.width = new_div;
+
+		/* Update output configuration from mailbox */
+		return zl3073x_mb_output_write(zldev, output, mask, &mb);
+	}
+
+	/* Read output configuration into mailbox */
+	rc = zl3073x_mb_output_read(zldev, output,
+				    ZL3073X_MB_OUTPUT_DIV |
+				    ZL3073X_MB_OUTPUT_ESYNC_PERIOD, &mb);
+	if (rc)
+		return rc;
+
+	/* Check output divisor for zero */
+	if (!mb.div) {
+		dev_err(zldev->dev,
+			"Zero divisor for output %u got from device\n",
+			output);
+		return -EINVAL;
+	}
+
+	/* Check N-pin divisor for zero */
+	if (!mb.esync_period) {
+		dev_err(zldev->dev,
+			"Zero N-pin divisor for output %u got from device\n",
+			output);
+		return -EINVAL;
+	}
+
+	/* Compute current output frequency for P-pin */
+	output_p_freq = (u32)div_u64(synth_freq, mb.div);
+
+	/* Compute current N-pin frequency */
+	output_n_freq = output_p_freq / mb.esync_period;
+
+	if (zl3073x_dpll_is_p_pin(pin)) {
+		/* We are going to change output frequency for P-pin but
+		 * if the requested frequency is less than current N-pin
+		 * frequency then indicate a failure as we are not able
+		 * to compute N-pin divisor to keep its frequency unchanged.
+		 */
+		if (frequency <= output_n_freq)
+			return -EINVAL;
+
+		/* Update the divisor in mailbox with new divisor */
+		mask = ZL3073X_MB_OUTPUT_DIV;
+		mb.div = new_div;
+
+		/* For 50/50 duty cycle the divisor is equal to width */
+		mask |= ZL3073X_MB_OUTPUT_WIDTH;
+		mb.width = new_div;
+
+		/* Compute new divisor for N-pin */
+		mask |= ZL3073X_MB_OUTPUT_ESYNC_PERIOD;
+		mb.esync_period = (u32)div_u64(frequency, output_n_freq);
+	} else {
+		/* We are going to change frequency of N-pin but if
+		 * the requested freq is greater or equal than freq of P-pin
+		 * in the output pair we cannot compute divisor for the N-pin.
+		 * In this case indicate a failure.
+		 */
+		if (output_p_freq <= frequency)
+			return -EINVAL;
+
+		/* Compute new divisor for N-pin */
+		mask = ZL3073X_MB_OUTPUT_ESYNC_PERIOD;
+		mb.esync_period = output_p_freq / (u32)frequency;
+	}
+
+	/* For 50/50 duty cycle the divisor is equal to width */
+	mask |= ZL3073X_MB_OUTPUT_ESYNC_WIDTH;
+	mb.esync_width = mb.esync_period;
+
+	/* Update output configuration from mailbox */
+	return zl3073x_mb_output_write(zldev, output, mask, &mb);
+
+}
+
 static int
 zl3073x_dpll_output_pin_state_on_dpll_get(const struct dpll_pin *dpll_pin,
 					  void *pin_priv,
@@ -784,6 +997,8 @@ static const struct dpll_pin_ops zl3073x_dpll_input_pin_ops = {
 
 static const struct dpll_pin_ops zl3073x_dpll_output_pin_ops = {
 	.direction_get = zl3073x_dpll_pin_direction_get,
+	.frequency_get = zl3073x_dpll_output_pin_frequency_get,
+	.frequency_set = zl3073x_dpll_output_pin_frequency_set,
 	.state_on_dpll_get = zl3073x_dpll_output_pin_state_on_dpll_get,
 };
 
