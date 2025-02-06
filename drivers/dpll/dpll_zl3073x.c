@@ -45,6 +45,7 @@ struct zl3073x_dpll_pin_info {
  * @esync_control: embedded sync is controllable
  * @pin_state: last saved pin state
  * @phase_offset: last saved pin phase offset
+ * @freq_offset: last saved fractional frequency offset
  */
 struct zl3073x_dpll_pin {
 	struct dpll_pin			*dpll_pin;
@@ -54,6 +55,7 @@ struct zl3073x_dpll_pin {
 	bool				esync_control;
 	enum dpll_pin_state		pin_state;
 	u64				phase_offset;
+	u32				freq_offset;
 };
 
 /**
@@ -363,6 +365,18 @@ zl3073x_dpll_input_pin_esync_set(const struct dpll_pin *dpll_pin,
 
 	/* Update reference configuration from mailbox */
 	return zl3073x_mb_ref_write(zldev, ref_id, mask, &mb);
+}
+
+static int
+zl3073x_dpll_input_pin_ffo_get(const struct dpll_pin *dpll_pin, void *pin_priv,
+			       const struct dpll_device *dpll, void *dpll_priv,
+			       s64 *ffo, struct netlink_ext_ack *extack)
+{
+	struct zl3073x_dpll_pin *pin = pin_priv;
+
+	*ffo = sign_extend64(pin->freq_offset, 31);
+
+	return 0;
 }
 
 static int
@@ -1485,6 +1499,7 @@ static const struct dpll_pin_ops zl3073x_dpll_input_pin_ops = {
 	.direction_get = zl3073x_dpll_pin_direction_get,
 	.esync_get = zl3073x_dpll_input_pin_esync_get,
 	.esync_set = zl3073x_dpll_input_pin_esync_set,
+	.ffo_get = zl3073x_dpll_input_pin_ffo_get,
 	.frequency_get = zl3073x_dpll_input_pin_frequency_get,
 	.frequency_set = zl3073x_dpll_input_pin_frequency_set,
 	.phase_offset_get = zl3073x_dpll_input_pin_phase_offset_get,
@@ -2167,6 +2182,7 @@ zl3073x_dpll_periodic_work(struct kthread_work *work)
 						   work.work);
 	struct zl3073x_dev *zldev = zldpll->mfd;
 	struct zl3073x_mb_phase_meas mb_phase;
+	struct zl3073x_mb_freq_meas mb_freq;
 	enum dpll_lock_status lock_status;
 	int i, rc;
 
@@ -2191,6 +2207,15 @@ zl3073x_dpll_periodic_work(struct kthread_work *work)
 	if (rc) {
 		dev_err(zldev->dev,
 			"Failed to perform phase measurements: %pe\n",
+			ERR_PTR(rc));
+		goto out;
+	}
+
+	/* Perform frequency offset measurement for all refs to this DPLL */
+	rc = zl3073x_mb_freq_meas_do(zldev, zldpll->id, &mb_freq);
+	if (rc) {
+		dev_err(zldev->dev,
+			"Failed to perform frequency offset measurement: %pe\n",
 			ERR_PTR(rc));
 		goto out;
 	}
@@ -2229,6 +2254,11 @@ zl3073x_dpll_periodic_work(struct kthread_work *work)
 
 		if (mb_phase.ref_phase[index] != pin->phase_offset) {
 			pin->phase_offset = mb_phase.ref_phase[index];
+			pin_changed = true;
+		}
+
+		if (mb_freq.ref_freq_off[index] != pin->freq_offset) {
+			pin->freq_offset = mb_freq.ref_freq_off[index];
 			pin_changed = true;
 		}
 
