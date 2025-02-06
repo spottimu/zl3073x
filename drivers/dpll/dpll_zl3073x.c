@@ -48,6 +48,7 @@ struct zl3073x_dpll_pin_info {
  * @esync_control: embedded sync is controllable
  * @pin_state: last saved pin state
  * @phase_offset: last saved pin phase offset
+ * @freq_offset: last saved fractional frequency offset
  */
 struct zl3073x_dpll_pin {
 	struct dpll_pin			*dpll_pin;
@@ -57,6 +58,7 @@ struct zl3073x_dpll_pin {
 	bool				esync_control;
 	enum dpll_pin_state		pin_state;
 	s64				phase_offset;
+	s64				freq_offset;
 };
 
 /**
@@ -406,6 +408,75 @@ zl3073x_dpll_input_pin_esync_set(const struct dpll_pin *dpll_pin,
 
 	/* Update reference configuration from mailbox */
 	return zl3073x_mb_ref_write(zldev, ref_id);
+}
+
+static int
+zl3073x_dpll_input_pin_ffo_get(const struct dpll_pin *dpll_pin, void *pin_priv,
+			       const struct dpll_device *dpll, void *dpll_priv,
+			       s64 *ffo, struct netlink_ext_ack *extack)
+{
+	struct zl3073x_dpll *zldpll = dpll_priv;
+	struct zl3073x_dev *zldev = zldpll->mfd;
+	struct zl3073x_dpll_pin *pin = pin_priv;
+	u8 dpll_meas_ref_freq_ctrl, ref_id;
+	u8 ref_freq_meas_ctrl, ref_mask;
+	s32 freq_offset;
+	int rc;
+
+	/* Get index of the pin */
+	ref_id = zl3073x_dpll_pin_index_get(pin);
+
+	/* Although reference measurement registers are not placed in mailbox
+	 * pages we have to access these registers in this function atomically.
+	 */
+	guard(zl3073x_mailbox)(zldev);
+
+	/* Select channel index in the mask and enable freq measurement */
+	dpll_meas_ref_freq_ctrl =
+		ZL_DPLL_MEAS_REF_FREQ_CTRL_EN |
+		FIELD_PREP(ZL_DPLL_MEAS_REF_FREQ_CTRL_IDX, zldpll->id);
+
+	rc = zl3073x_write_dpll_meas_ref_freq_ctrl(zldev,
+						   dpll_meas_ref_freq_ctrl);
+	if (rc)
+		return rc;
+
+	/* Set reference mask
+	 * REF0P,REF0N..REF3P,REF3N are set in ref_freq_meas_mask_3_0 register
+	 * REF4P and REF4N are set in ref_freq_meas_mask_4 register
+	 */
+	if (ref_id < 8) {
+		ref_mask = ZL_REF_FREQ_MEAS_MASK_3_0(ref_id);
+		rc = zl3073x_write_ref_freq_meas_mask_3_0(zldev, ref_mask);
+	} else {
+		ref_mask = ZL_REF_FREQ_MEAS_MASK_4(ref_id);
+		rc = zl3073x_write_ref_freq_meas_mask_4(zldev, ref_mask);
+	}
+	if (rc)
+		return rc;
+
+	/* Request a reading of the frequency offset between the DPLL and
+	 * the reference
+	 */
+	ref_freq_meas_ctrl = ZL_REF_FREQ_MEAS_CTRL_LATCH_DPLL_FREQ_OFF;
+	rc = zl3073x_write_ref_freq_meas_ctrl(zldev, ref_freq_meas_ctrl);
+	if (rc)
+		return rc;
+
+	/* Wait for the command to actually finish */
+	rc = zl3073x_poll_ref_freq_meas_ctrl(zldev,
+					     ZL_REF_FREQ_MEAS_CTRL_LATCH);
+	if (rc)
+		return rc;
+
+	/* Read the frequency offset between DPLL and reference */
+	rc = zl3073x_read_ref_freq(zldev, ref_id, &freq_offset);
+	if (rc)
+		return rc;
+
+	*ffo = freq_offset;
+
+	return rc;
 }
 
 static int
@@ -1671,6 +1742,7 @@ static const struct dpll_pin_ops zl3073x_dpll_input_pin_ops = {
 	.direction_get = zl3073x_dpll_pin_direction_get,
 	.esync_get = zl3073x_dpll_input_pin_esync_get,
 	.esync_set = zl3073x_dpll_input_pin_esync_set,
+	.ffo_get = zl3073x_dpll_input_pin_ffo_get,
 	.frequency_get = zl3073x_dpll_input_pin_frequency_get,
 	.frequency_set = zl3073x_dpll_input_pin_frequency_set,
 	.phase_offset_get = zl3073x_dpll_input_pin_phase_offset_get,
@@ -2375,10 +2447,10 @@ zl3073x_dpll_periodic_work(struct kthread_work *work)
 	 * are constant.
 	 */
 	for (i = 0; i < ZL3073X_NUM_INPUT_PINS; i++) {
+		s64 freq_offset, phase_offset;
 		struct zl3073x_dpll_pin *pin;
 		enum dpll_pin_state state;
 		bool pin_changed = false;
-		s64 phase_offset;
 		u8 index;
 
 		/* Input pins starts are stored after output pins */
@@ -2415,12 +2487,26 @@ zl3073x_dpll_periodic_work(struct kthread_work *work)
 			goto out;
 		}
 
+		rc = zl3073x_dpll_input_pin_ffo_get(pin->dpll_pin, pin,
+						    zldpll->dpll_dev, zldpll,
+						    &freq_offset, NULL);
+		if (rc) {
+			dev_err(zldev->dev,
+				"Failed to get INPUT%u on DPLL%u fraction frequency offset: %pe\n",
+				index, zldpll->id, ERR_PTR(rc));
+			goto out;
+		}
+
 		if (state != pin->pin_state) {
 			pin->pin_state = state;
 			pin_changed = true;
 		}
 		if (phase_offset != pin->phase_offset) {
 			pin->phase_offset = phase_offset;
+			pin_changed = true;
+		}
+		if (freq_offset != pin->freq_offset) {
+			pin->freq_offset = freq_offset;
 			pin_changed = true;
 		}
 

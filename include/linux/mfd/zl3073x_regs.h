@@ -194,6 +194,33 @@ zl3073x_read_dpll_refsel_status(struct zl3073x_dev *zldev, unsigned int idx,
 	return rc;
 }
 
+/*
+ * Register array 'ref_freq'
+ * Page: 2, Offset: 0x44, Size: 32 bits, Items: 10, Stride: 4
+ */
+#define ZL_REG_REF_FREQ	       ZL_REG_ADDR(2, 0x44)
+#define ZL_REG_REF_FREQ_ITEMS  ZL3073X_NUM_INPUT_PINS
+#define ZL_REG_REF_FREQ_STRIDE 4
+
+static inline __maybe_unused int
+zl3073x_read_ref_freq(struct zl3073x_dev *zldev, unsigned int idx, u32 *value)
+{
+	unsigned int addr;
+	__be32 temp;
+	int rc;
+
+	if (idx >= ZL_REG_REF_FREQ_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_REF_FREQ + idx * ZL_REG_REF_FREQ_STRIDE;
+	rc = regmap_bulk_read(zldev->regmap, addr, &temp, sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
 /**********************
  * Register Page 4, Ref
  **********************/
@@ -232,6 +259,119 @@ zl3073x_poll_ref_phase_err_read_rqst(struct zl3073x_dev *zldev, u8 bitmask)
 					ZL_REG_REF_PHASE_ERR_READ_RQST, v,
 					!(v & bitmask), ZL_POLL_SLEEP_US,
 					ZL_POLL_TIMEOUT_US);
+}
+
+/*
+ * Register 'ref_freq_meas_ctrl'
+ * Page: 4, Offset: 0x1c, Size: 8 bits
+ */
+#define ZL_REG_REF_FREQ_MEAS_CTRL		  ZL_REG_ADDR(4, 0x1c)
+#define ZL_REF_FREQ_MEAS_CTRL_LATCH		  GENMASK(1, 0)
+#define ZL_REF_FREQ_MEAS_CTRL_LATCH_REF_FREQ	  1
+#define ZL_REF_FREQ_MEAS_CTRL_LATCH_REF_FREQ_OFF  2
+#define ZL_REF_FREQ_MEAS_CTRL_LATCH_DPLL_FREQ_OFF 3
+
+static inline __maybe_unused int
+zl3073x_read_ref_freq_meas_ctrl(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_REF_FREQ_MEAS_CTRL, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_ref_freq_meas_ctrl(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_REF_FREQ_MEAS_CTRL, value);
+}
+
+static inline __maybe_unused int
+zl3073x_poll_ref_freq_meas_ctrl(struct zl3073x_dev *zldev, u8 bitmask)
+{
+	unsigned int v;
+
+	return regmap_read_poll_timeout(zldev->regmap,
+					ZL_REG_REF_FREQ_MEAS_CTRL, v,
+					!(v & bitmask), ZL_POLL_SLEEP_US,
+					ZL_POLL_TIMEOUT_US);
+}
+
+/*
+ * Register 'ref_freq_meas_mask_3_0'
+ * Page: 4, Offset: 0x1d, Size: 8 bits
+ */
+#define ZL_REG_REF_FREQ_MEAS_MASK_3_0	ZL_REG_ADDR(4, 0x1d)
+#define ZL_REF_FREQ_MEAS_MASK_3_0(_ref) BIT(_ref)
+
+static inline __maybe_unused int
+zl3073x_read_ref_freq_meas_mask_3_0(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_REF_FREQ_MEAS_MASK_3_0, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_ref_freq_meas_mask_3_0(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_REF_FREQ_MEAS_MASK_3_0,
+			    value);
+}
+
+/*
+ * Register 'ref_freq_meas_mask_4'
+ * Page: 4, Offset: 0x1e, Size: 8 bits
+ */
+#define ZL_REG_REF_FREQ_MEAS_MASK_4   ZL_REG_ADDR(4, 0x1e)
+#define ZL_REF_FREQ_MEAS_MASK_4(_ref) BIT((_ref) - 8)
+
+static inline __maybe_unused int
+zl3073x_read_ref_freq_meas_mask_4(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_REF_FREQ_MEAS_MASK_4, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_ref_freq_meas_mask_4(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_REF_FREQ_MEAS_MASK_4, value);
+}
+
+/*
+ * Register 'dpll_meas_ref_freq_ctrl'
+ * Page: 4, Offset: 0x1f, Size: 8 bits
+ */
+#define ZL_REG_DPLL_MEAS_REF_FREQ_CTRL ZL_REG_ADDR(4, 0x1f)
+#define ZL_DPLL_MEAS_REF_FREQ_CTRL_EN  BIT(0)
+#define ZL_DPLL_MEAS_REF_FREQ_CTRL_IDX GENMASK(6, 4)
+
+static inline __maybe_unused int
+zl3073x_read_dpll_meas_ref_freq_ctrl(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_DPLL_MEAS_REF_FREQ_CTRL, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_dpll_meas_ref_freq_ctrl(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_DPLL_MEAS_REF_FREQ_CTRL,
+			    value);
 }
 
 /*
