@@ -726,6 +726,40 @@ zl3073x_mb_write_ref_ratio_n(struct zl3073x_dev *zldev, u16 value)
 }
 
 /*
+ * Register 'ref_phase_compensation'
+ * Page: 10, Offset: 0x28, Size: 48 bits
+ */
+#define ZL_REG_REF_PHASE_COMPENSATION	  ZL_REG_ADDR(10, 0x28)
+#define ZL_REG_REF_PHASE_COMPENSATION_LEN 6
+
+static inline __maybe_unused int
+zl3073x_mb_read_ref_phase_compensation(struct zl3073x_dev *zldev, u64 *value)
+{
+	u8 buf[ZL_REG_REF_PHASE_COMPENSATION_LEN];
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_REF_PHASE_COMPENSATION, buf,
+			      sizeof(buf));
+	if (rc)
+		return rc;
+
+	*value = get_unaligned_be64(buf);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_ref_phase_compensation(struct zl3073x_dev *zldev, u64 value)
+{
+	u8 buf[ZL_REG_REF_PHASE_COMPENSATION_LEN];
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	put_unaligned_be64(value, &buf);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_REF_PHASE_COMPENSATION,
+				 buf, sizeof(buf));
+}
+
+/*
  * Register 'ref_config'
  * Page: 10, Offset: 0x0d, Size: 8 bits
  */
@@ -1249,6 +1283,40 @@ zl3073x_mb_write_output_ndiv_width(struct zl3073x_dev *zldev, u32 value)
 	lockdep_assert_held(&zldev->mailbox_lock);
 	temp = cpu_to_be32(value);
 	return regmap_bulk_write(zldev->regmap, ZL_REG_OUTPUT_NDIV_WIDTH, &temp,
+				 sizeof(temp));
+}
+
+/*
+ * Register 'output_phase_compensation'
+ * Page: 14, Offset: 0x20, Size: 32 bits
+ */
+#define ZL_REG_OUTPUT_PHASE_COMPENSATION ZL_REG_ADDR(14, 0x20)
+
+static inline __maybe_unused int
+zl3073x_mb_read_output_phase_compensation(struct zl3073x_dev *zldev, u32 *value)
+{
+	__be32 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_OUTPUT_PHASE_COMPENSATION,
+			      &temp, sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_output_phase_compensation(struct zl3073x_dev *zldev, u32 value)
+{
+	__be32 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be32(value);
+	return regmap_bulk_write(zldev->regmap,
+				 ZL_REG_OUTPUT_PHASE_COMPENSATION, &temp,
 				 sizeof(temp));
 }
 
