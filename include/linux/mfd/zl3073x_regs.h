@@ -194,6 +194,74 @@ zl3073x_read_dpll_refsel_status(struct zl3073x_dev *zldev, unsigned int idx,
 	return rc;
 }
 
+/**********************
+ * Register Page 4, Ref
+ **********************/
+
+/*
+ * Register 'ref_phase_err_read_rqst'
+ * Page: 4, Offset: 0x0f, Size: 8 bits
+ */
+#define ZL_REG_REF_PHASE_ERR_READ_RQST ZL_REG_ADDR(4, 0x0f)
+#define ZL_REF_PHASE_ERR_READ_RQST_RD  BIT(0)
+
+static inline __maybe_unused int
+zl3073x_read_ref_phase_err_read_rqst(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_REF_PHASE_ERR_READ_RQST, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_ref_phase_err_read_rqst(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_REF_PHASE_ERR_READ_RQST,
+			    value);
+}
+
+static inline __maybe_unused int
+zl3073x_poll_ref_phase_err_read_rqst(struct zl3073x_dev *zldev, u8 bitmask)
+{
+	unsigned int v;
+
+	return regmap_read_poll_timeout(zldev->regmap,
+					ZL_REG_REF_PHASE_ERR_READ_RQST, v,
+					!(v & bitmask), ZL_POLL_SLEEP_US,
+					ZL_POLL_TIMEOUT_US);
+}
+
+/*
+ * Register array 'ref_phase'
+ * Page: 4, Offset: 0x20, Size: 48 bits, Items: 10, Stride: 6
+ */
+#define ZL_REG_REF_PHASE	ZL_REG_ADDR(4, 0x20)
+#define ZL_REG_REF_PHASE_LEN	6
+#define ZL_REG_REF_PHASE_ITEMS	ZL3073X_NUM_INPUT_PINS
+#define ZL_REG_REF_PHASE_STRIDE 6
+
+static inline __maybe_unused int
+zl3073x_read_ref_phase(struct zl3073x_dev *zldev, unsigned int idx, u64 *value)
+{
+	u8 buf[ZL_REG_REF_PHASE_LEN];
+	unsigned int addr;
+	int rc;
+
+	if (idx >= ZL_REG_REF_PHASE_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_REF_PHASE + idx * ZL_REG_REF_PHASE_STRIDE;
+	rc = regmap_bulk_read(zldev->regmap, addr, buf, sizeof(buf));
+	if (rc)
+		return rc;
+
+	*value = get_unaligned_be64(buf);
+	return rc;
+}
+
 /***********************
  * Register Page 5, DPLL
  ***********************/
@@ -240,6 +308,55 @@ zl3073x_write_dpll_mode_refsel(struct zl3073x_dev *zldev, unsigned int idx,
 
 	addr = ZL_REG_DPLL_MODE_REFSEL + idx * ZL_REG_DPLL_MODE_REFSEL_STRIDE;
 	return regmap_write(zldev->regmap, addr, value);
+}
+
+/*
+ * Register 'dpll_meas_ctrl'
+ * Page: 5, Offset: 0x50, Size: 8 bits
+ */
+#define ZL_REG_DPLL_MEAS_CTRL	     ZL_REG_ADDR(5, 0x50)
+#define ZL_DPLL_MEAS_CTRL_EN	     BIT(0)
+#define ZL_DPLL_MEAS_CTRL_AVG_FACTOR GENMASK(7, 4)
+
+static inline __maybe_unused int
+zl3073x_read_dpll_meas_ctrl(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_DPLL_MEAS_CTRL, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_dpll_meas_ctrl(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_DPLL_MEAS_CTRL, value);
+}
+
+/*
+ * Register 'dpll_meas_idx'
+ * Page: 5, Offset: 0x51, Size: 8 bits
+ */
+#define ZL_REG_DPLL_MEAS_IDX ZL_REG_ADDR(5, 0x51)
+#define ZL_DPLL_MEAS_IDX     GENMASK(2, 0)
+
+static inline __maybe_unused int
+zl3073x_read_dpll_meas_idx(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	rc = regmap_read(zldev->regmap, ZL_REG_DPLL_MEAS_IDX, &v);
+	*value = v;
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_write_dpll_meas_idx(struct zl3073x_dev *zldev, u8 value)
+{
+	return regmap_write(zldev->regmap, ZL_REG_DPLL_MEAS_IDX, value);
 }
 
 /***********************************
