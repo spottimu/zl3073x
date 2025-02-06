@@ -726,6 +726,26 @@ zl3073x_mb_write_ref_ratio_n(struct zl3073x_dev *zldev, u16 value)
 }
 
 /*
+ * Register 'ref_config'
+ * Page: 10, Offset: 0x0d, Size: 8 bits
+ */
+#define ZL_REG_REF_CONFIG     ZL_REG_ADDR(10, 0x0d)
+#define ZL_REF_CONFIG_ENABLE  BIT(0)
+#define ZL_REF_CONFIG_DIFF_EN BIT(2)
+
+static inline __maybe_unused int
+zl3073x_mb_read_ref_config(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_read(zldev->regmap, ZL_REG_REF_CONFIG, &v);
+	*value = v;
+	return rc;
+}
+
+/*
  * Register 'ref_phase_compensation'
  * Page: 10, Offset: 0x28, Size: 48 bits
  */
@@ -760,23 +780,65 @@ zl3073x_mb_write_ref_phase_compensation(struct zl3073x_dev *zldev, u64 value)
 }
 
 /*
- * Register 'ref_config'
- * Page: 10, Offset: 0x0d, Size: 8 bits
+ * Register 'ref_sync_ctrl'
+ * Page: 10, Offset: 0x2e, Size: 8 bits
  */
-#define ZL_REG_REF_CONFIG     ZL_REG_ADDR(10, 0x0d)
-#define ZL_REF_CONFIG_ENABLE  BIT(0)
-#define ZL_REF_CONFIG_DIFF_EN BIT(2)
+#define ZL_REG_REF_SYNC_CTRL			ZL_REG_ADDR(10, 0x2e)
+#define ZL_REF_SYNC_CTRL_MODE			GENMASK(2, 0)
+#define ZL_REF_SYNC_CTRL_MODE_REFSYNC_PAIR_OFF	0
+#define ZL_REF_SYNC_CTRL_MODE_50_50_ESYNC_25_75 2
 
 static inline __maybe_unused int
-zl3073x_mb_read_ref_config(struct zl3073x_dev *zldev, u8 *value)
+zl3073x_mb_read_ref_sync_ctrl(struct zl3073x_dev *zldev, u8 *value)
 {
 	unsigned int v;
 	int rc;
 
 	lockdep_assert_held(&zldev->mailbox_lock);
-	rc = regmap_read(zldev->regmap, ZL_REG_REF_CONFIG, &v);
+	rc = regmap_read(zldev->regmap, ZL_REG_REF_SYNC_CTRL, &v);
 	*value = v;
 	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_ref_sync_ctrl(struct zl3073x_dev *zldev, u8 value)
+{
+	lockdep_assert_held(&zldev->mailbox_lock);
+	return regmap_write(zldev->regmap, ZL_REG_REF_SYNC_CTRL, value);
+}
+
+/*
+ * Register 'ref_esync_div'
+ * Page: 10, Offset: 0x30, Size: 32 bits
+ */
+#define ZL_REG_REF_ESYNC_DIV ZL_REG_ADDR(10, 0x30)
+#define ZL_REF_ESYNC_DIV_1HZ 0
+
+static inline __maybe_unused int
+zl3073x_mb_read_ref_esync_div(struct zl3073x_dev *zldev, u32 *value)
+{
+	__be32 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_REF_ESYNC_DIV, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_ref_esync_div(struct zl3073x_dev *zldev, u32 value)
+{
+	__be32 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be32(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_REF_ESYNC_DIV, &temp,
+				 sizeof(temp));
 }
 
 /********************************
@@ -1139,8 +1201,11 @@ zl3073x_mb_poll_output_mb_sem(struct zl3073x_dev *zldev, u8 bitmask)
  * Register 'output_mode'
  * Page: 14, Offset: 0x05, Size: 8 bits
  */
-#define ZL_REG_OUTPUT_MODE	     ZL_REG_ADDR(14, 0x05)
-#define ZL_OUTPUT_MODE_SIGNAL_FORMAT GENMASK(7, 4)
+#define ZL_REG_OUTPUT_MODE		 ZL_REG_ADDR(14, 0x05)
+#define ZL_OUTPUT_MODE_CLOCK_TYPE	 GENMASK(2, 0)
+#define ZL_OUTPUT_MODE_CLOCK_TYPE_NORMAL 0
+#define ZL_OUTPUT_MODE_CLOCK_TYPE_ESYNC	 1
+#define ZL_OUTPUT_MODE_SIGNAL_FORMAT	 GENMASK(7, 4)
 
 static inline __maybe_unused int
 zl3073x_mb_read_output_mode(struct zl3073x_dev *zldev, u8 *value)
@@ -1152,6 +1217,13 @@ zl3073x_mb_read_output_mode(struct zl3073x_dev *zldev, u8 *value)
 	rc = regmap_read(zldev->regmap, ZL_REG_OUTPUT_MODE, &v);
 	*value = v;
 	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_output_mode(struct zl3073x_dev *zldev, u8 value)
+{
+	lockdep_assert_held(&zldev->mailbox_lock);
+	return regmap_write(zldev->regmap, ZL_REG_OUTPUT_MODE, value);
 }
 
 /*
@@ -1218,6 +1290,72 @@ zl3073x_mb_write_output_width(struct zl3073x_dev *zldev, u32 value)
 	temp = cpu_to_be32(value);
 	return regmap_bulk_write(zldev->regmap, ZL_REG_OUTPUT_WIDTH, &temp,
 				 sizeof(temp));
+}
+
+/*
+ * Register 'output_esync_period'
+ * Page: 14, Offset: 0x14, Size: 32 bits
+ */
+#define ZL_REG_OUTPUT_ESYNC_PERIOD ZL_REG_ADDR(14, 0x14)
+
+static inline __maybe_unused int
+zl3073x_mb_read_output_esync_period(struct zl3073x_dev *zldev, u32 *value)
+{
+	__be32 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_OUTPUT_ESYNC_PERIOD, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_output_esync_period(struct zl3073x_dev *zldev, u32 value)
+{
+	__be32 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be32(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_OUTPUT_ESYNC_PERIOD,
+				 &temp, sizeof(temp));
+}
+
+/*
+ * Register 'output_esync_width'
+ * Page: 14, Offset: 0x18, Size: 32 bits
+ */
+#define ZL_REG_OUTPUT_ESYNC_WIDTH ZL_REG_ADDR(14, 0x18)
+
+static inline __maybe_unused int
+zl3073x_mb_read_output_esync_width(struct zl3073x_dev *zldev, u32 *value)
+{
+	__be32 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_OUTPUT_ESYNC_WIDTH, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
+static inline __maybe_unused int
+zl3073x_mb_write_output_esync_width(struct zl3073x_dev *zldev, u32 value)
+{
+	__be32 temp;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	temp = cpu_to_be32(value);
+	return regmap_bulk_write(zldev->regmap, ZL_REG_OUTPUT_ESYNC_WIDTH,
+				 &temp, sizeof(temp));
 }
 
 /*
