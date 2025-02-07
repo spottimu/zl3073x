@@ -5,6 +5,7 @@
 #include <linux/dev_printk.h>
 #include <linux/device.h>
 #include <linux/export.h>
+#include <linux/math64.h>
 #include <linux/mfd/zl3073x.h>
 #include <linux/mfd/zl3073x_regs.h>
 #include <linux/module.h>
@@ -482,6 +483,237 @@ static void zl3073x_devlink_unregister(void *ptr)
 }
 
 /**
+ * zl3073x_input_state_fetch - get input state
+ * @zldev: pointer to zl3073x_dev structure
+ * @index: input pin index to fetch state for
+ *
+ * Function fetches information for the given input reference that are
+ * invariant and stores them for later use.
+ *
+ * Return: 0 on success, <0 on error
+ */
+static int
+zl3073x_input_state_fetch(struct zl3073x_dev *zldev, u8 index)
+{
+	struct zl3073x_input *input;
+	u8 ref_config;
+	int rc;
+
+	if (index >= ZL3073X_NUM_INPUTS)
+		return -EINVAL;
+
+	input = &zldev->input[index];
+
+	/* If the input is differential then the configuration for N-pin
+	 * reference is ignored and P-pin config is used for both.
+	 */
+	if (zl3073x_is_n_pin(index) &&
+	    zl3073x_input_is_diff(zldev, index - 1)) {
+		input->enabled = zl3073x_input_is_enabled(zldev, index - 1);
+		input->diff = true;
+
+		return 0;
+	}
+
+	guard(zl3073x_mailbox)(zldev);
+
+	/* Read reference configuration into mailbox */
+	rc = zl3073x_mb_ref_read(zldev, index);
+	if (rc)
+		return rc;
+
+	/* Read reference config register */
+	rc = zl3073x_mb_read_ref_config(zldev, &ref_config);
+	if (rc)
+		return rc;
+
+	/* Store info about input reference enablement and if it is
+	 * configured in differential mode or not.
+	 */
+	input->enabled = FIELD_GET(ZL_REF_CONFIG_ENABLE, ref_config);
+	input->diff = FIELD_GET(ZL_REF_CONFIG_DIFF_EN, ref_config);
+
+	dev_dbg(zldev->dev, "INPUT%u is %sabled and configured as %s\n", index,
+		input->enabled ? "en" : "dis",
+		input->diff ? "differential" : "single-ended");
+
+	return rc;
+}
+
+/**
+ * zl3073x_output_state_fetch - get output state
+ * @zldev: pointer to zl3073x_dev structure
+ * @index: output index to fetch state for
+ *
+ * Function fetches information for the given output (not output pin)
+ * that are invariant and stores them for later use.
+ *
+ * Return: 0 on success, <0 on error
+ */
+static int
+zl3073x_output_state_fetch(struct zl3073x_dev *zldev, u8 index)
+{
+	struct zl3073x_output *output;
+	u8 output_ctrl, output_mode;
+	int rc;
+
+	if (index >= ZL3073X_NUM_OUTPUTS)
+		return -EINVAL;
+
+	output = &zldev->output[index];
+
+	/* Read output control register */
+	rc = zl3073x_read_output_ctrl(zldev, index, &output_ctrl);
+	if (rc)
+		return rc;
+
+	/* Store info about output enablement and synthesizer the output
+	 * is connected to.
+	 */
+	output->enabled = FIELD_GET(ZL_OUTPUT_CTRL_EN, output_ctrl);
+	output->synth = FIELD_GET(ZL_OUTPUT_CTRL_SYNTH_SEL, output_ctrl);
+
+	dev_dbg(zldev->dev, "OUTPUT%u is %sabled, connected to SYNTH%u\n",
+		index, output->enabled ? "en" : "dis", output->synth);
+
+	guard(zl3073x_mailbox)(zldev);
+
+	/* Load given output config into mailbox */
+	rc = zl3073x_mb_output_read(zldev, index);
+	if (rc)
+		return rc;
+
+	/* Read output mode from mailbox */
+	rc = zl3073x_mb_read_output_mode(zldev, &output_mode);
+	if (rc)
+		return rc;
+
+	/* Extract and store output signal format */
+	output->signal_format = FIELD_GET(ZL_OUTPUT_MODE_SIGNAL_FORMAT,
+					  output_mode);
+
+	dev_dbg(zldev->dev, "OUTPUT%u has signal format 0x%02x\n", index,
+		output->signal_format);
+
+	return rc;
+}
+
+/**
+ * zl3073x_synth_state_fetch - get synth state
+ * @zldev: pointer to zl3073x_dev structure
+ * @index: synth index to fetch state for
+ *
+ * Function fetches information for the given synthesizer that are
+ * invariant and stores them for later use.
+ *
+ * Return: 0 on success, <0 on error
+ */
+static int
+zl3073x_synth_state_fetch(struct zl3073x_dev *zldev, u8 index)
+{
+	u16 base, numerator, denominator;
+	u8 synth_ctrl;
+	u32 mult;
+	int rc;
+
+	/* Read synth control register */
+	rc = zl3073x_read_synth_ctrl(zldev, index, &synth_ctrl);
+	if (rc)
+		return rc;
+
+	/* Extract and store DPLL channel the synth is driven by */
+	zldev->synth[index].dpll = FIELD_GET(ZL_SYNTH_CTRL_DPLL_SEL,
+					     synth_ctrl);
+
+	dev_dbg(zldev->dev, "SYNTH%u is connected to DPLL%u\n", index,
+		zldev->synth[index].dpll);
+
+	guard(zl3073x_mailbox)(zldev);
+
+	/* Read synth configuration into mailbox */
+	rc = zl3073x_mb_synth_read(zldev, index);
+	if (rc)
+		return rc;
+
+	/* The output frequency is determined by the following formula:
+	 * base * multiplier * numerator / denominator
+	 *
+	 * Therefore get all this number and calculate the output frequency
+	 */
+	rc = zl3073x_mb_read_synth_freq_base(zldev, &base);
+	if (rc)
+		return rc;
+
+	rc = zl3073x_mb_read_synth_freq_mult(zldev, &mult);
+	if (rc)
+		return rc;
+
+	rc = zl3073x_mb_read_synth_freq_m(zldev, &numerator);
+	if (rc)
+		return rc;
+
+	rc = zl3073x_mb_read_synth_freq_n(zldev, &denominator);
+	if (rc)
+		return rc;
+
+	/* Check denominator for zero to avoid div by 0 */
+	if (!denominator) {
+		dev_err(zldev->dev,
+			"Zero divisor for SYNTH%u retrieved from device\n",
+			index);
+		return -EINVAL;
+	}
+
+	/* Compute and store synth frequency */
+	zldev->synth[index].freq = mul_u64_u32_div(mul_u32_u32(base, mult),
+						   numerator, denominator);
+
+	dev_dbg(zldev->dev, "SYNTH%u frequency: %llu Hz\n", index,
+		zldev->synth[index].freq);
+
+	return rc;
+}
+
+static int
+zl3073x_dev_state_fetch(struct zl3073x_dev *zldev)
+{
+	int rc;
+	u8 i;
+
+	for (i = 0; i < ZL3073X_NUM_INPUTS; i++) {
+		rc = zl3073x_input_state_fetch(zldev, i);
+		if (rc) {
+			dev_err(zldev->dev,
+				"Failed to fetch input state: %pe\n",
+				ERR_PTR(rc));
+			return rc;
+		}
+	}
+
+	for (i = 0; i < ZL3073X_NUM_SYNTHS; i++) {
+		rc = zl3073x_synth_state_fetch(zldev, i);
+		if (rc) {
+			dev_err(zldev->dev,
+				"Failed to fetch synth state: %pe\n",
+				ERR_PTR(rc));
+			return rc;
+		}
+	}
+
+	for (i = 0; i < ZL3073X_NUM_OUTPUTS; i++) {
+		rc = zl3073x_output_state_fetch(zldev, i);
+		if (rc) {
+			dev_err(zldev->dev,
+				"Failed to fetch output state: %pe\n",
+				ERR_PTR(rc));
+			return rc;
+		}
+	}
+
+	return rc;
+}
+
+/**
  * zl3073x_dev_probe - initialize zl3073x device
  * @zldev: pointer to zl3073x device
  * @chip_info: chip info based on compatible
@@ -536,6 +768,11 @@ int zl3073x_dev_probe(struct zl3073x_dev *zldev,
 
 	/* Use chip ID and given dev ID as clock ID */
 	zldev->clock_id = ((u64)id << 8) | dev_id;
+
+	/* Fetch device state */
+	rc = zl3073x_dev_state_fetch(zldev);
+	if (rc)
+		return rc;
 
 	/* Register the device as devlink device */
 	devlink = priv_to_devlink(zldev);

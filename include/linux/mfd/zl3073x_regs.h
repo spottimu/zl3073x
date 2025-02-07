@@ -106,6 +106,63 @@ zl3073x_read_custom_config_ver(struct zl3073x_dev *zldev, u32 *value)
 	return rc;
 }
 
+/***********************************
+ * Register Page 9, Synth and Output
+ ***********************************/
+
+/*
+ * Register array 'synth_ctrl'
+ * Page: 9, Offset: 0x00, Size: 8 bits, Items: 5, Stride: 1
+ */
+#define ZL_REG_SYNTH_CTRL	 ZL_REG_ADDR(9, 0x00)
+#define ZL_REG_SYNTH_CTRL_ITEMS	 5
+#define ZL_REG_SYNTH_CTRL_STRIDE 1
+#define ZL_SYNTH_CTRL_EN	 BIT(0)
+#define ZL_SYNTH_CTRL_DPLL_SEL	 GENMASK(6, 4)
+
+static inline __maybe_unused int
+zl3073x_read_synth_ctrl(struct zl3073x_dev *zldev, unsigned int idx, u8 *value)
+{
+	unsigned int addr, v;
+	int rc;
+
+	if (idx >= ZL_REG_SYNTH_CTRL_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_SYNTH_CTRL + idx * ZL_REG_SYNTH_CTRL_STRIDE;
+	rc = regmap_read(zldev->regmap, addr, &v);
+	*value = v;
+	return rc;
+}
+
+/*
+ * Register array 'output_ctrl'
+ * Page: 9, Offset: 0x28, Size: 8 bits, Items: 10, Stride: 1
+ */
+#define ZL_REG_OUTPUT_CTRL	  ZL_REG_ADDR(9, 0x28)
+#define ZL_REG_OUTPUT_CTRL_ITEMS  10
+#define ZL_REG_OUTPUT_CTRL_STRIDE 1
+#define ZL_OUTPUT_CTRL_EN	  BIT(0)
+#define ZL_OUTPUT_CTRL_STOP	  BIT(1)
+#define ZL_OUTPUT_CTRL_STOP_HIGH  BIT(2)
+#define ZL_OUTPUT_CTRL_STOP_HZ	  BIT(3)
+#define ZL_OUTPUT_CTRL_SYNTH_SEL  GENMASK(6, 4)
+
+static inline __maybe_unused int
+zl3073x_read_output_ctrl(struct zl3073x_dev *zldev, unsigned int idx, u8 *value)
+{
+	unsigned int addr, v;
+	int rc;
+
+	if (idx >= ZL_REG_OUTPUT_CTRL_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_OUTPUT_CTRL + idx * ZL_REG_OUTPUT_CTRL_STRIDE;
+	rc = regmap_read(zldev->regmap, addr, &v);
+	*value = v;
+	return rc;
+}
+
 /*******************************
  * Register Page 10, Ref Mailbox
  *******************************/
@@ -179,6 +236,26 @@ zl3073x_mb_poll_ref_mb_sem(struct zl3073x_dev *zldev, u8 bitmask)
 	return regmap_read_poll_timeout(zldev->regmap, ZL_REG_REF_MB_SEM, v,
 					!(v & bitmask), ZL_POLL_SLEEP_US,
 					ZL_POLL_TIMEOUT_US);
+}
+
+/*
+ * Register 'ref_config'
+ * Page: 10, Offset: 0x0d, Size: 8 bits
+ */
+#define ZL_REG_REF_CONFIG     ZL_REG_ADDR(10, 0x0d)
+#define ZL_REF_CONFIG_ENABLE  BIT(0)
+#define ZL_REF_CONFIG_DIFF_EN BIT(2)
+
+static inline __maybe_unused int
+zl3073x_mb_read_ref_config(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_read(zldev->regmap, ZL_REG_REF_CONFIG, &v);
+	*value = v;
+	return rc;
 }
 
 /********************************
@@ -331,6 +408,94 @@ zl3073x_mb_poll_synth_mb_sem(struct zl3073x_dev *zldev, u8 bitmask)
 					ZL_POLL_TIMEOUT_US);
 }
 
+/*
+ * Register 'synth_freq_base'
+ * Page: 13, Offset: 0x06, Size: 16 bits
+ */
+#define ZL_REG_SYNTH_FREQ_BASE ZL_REG_ADDR(13, 0x06)
+
+static inline __maybe_unused int
+zl3073x_mb_read_synth_freq_base(struct zl3073x_dev *zldev, u16 *value)
+{
+	__be16 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_SYNTH_FREQ_BASE, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be16_to_cpu(temp);
+	return rc;
+}
+
+/*
+ * Register 'synth_freq_mult'
+ * Page: 13, Offset: 0x08, Size: 32 bits
+ */
+#define ZL_REG_SYNTH_FREQ_MULT ZL_REG_ADDR(13, 0x08)
+
+static inline __maybe_unused int
+zl3073x_mb_read_synth_freq_mult(struct zl3073x_dev *zldev, u32 *value)
+{
+	__be32 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_SYNTH_FREQ_MULT, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be32_to_cpu(temp);
+	return rc;
+}
+
+/*
+ * Register 'synth_freq_m'
+ * Page: 13, Offset: 0x0c, Size: 16 bits
+ */
+#define ZL_REG_SYNTH_FREQ_M ZL_REG_ADDR(13, 0x0c)
+
+static inline __maybe_unused int
+zl3073x_mb_read_synth_freq_m(struct zl3073x_dev *zldev, u16 *value)
+{
+	__be16 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_SYNTH_FREQ_M, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be16_to_cpu(temp);
+	return rc;
+}
+
+/*
+ * Register 'synth_freq_n'
+ * Page: 13, Offset: 0x0e, Size: 16 bits
+ */
+#define ZL_REG_SYNTH_FREQ_N ZL_REG_ADDR(13, 0x0e)
+
+static inline __maybe_unused int
+zl3073x_mb_read_synth_freq_n(struct zl3073x_dev *zldev, u16 *value)
+{
+	__be16 temp;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_bulk_read(zldev->regmap, ZL_REG_SYNTH_FREQ_N, &temp,
+			      sizeof(temp));
+	if (rc)
+		return rc;
+
+	*value = be16_to_cpu(temp);
+	return rc;
+}
+
 /**********************************
  * Register Page 14, Output Mailbox
  **********************************/
@@ -404,6 +569,25 @@ zl3073x_mb_poll_output_mb_sem(struct zl3073x_dev *zldev, u8 bitmask)
 	return regmap_read_poll_timeout(zldev->regmap, ZL_REG_OUTPUT_MB_SEM, v,
 					!(v & bitmask), ZL_POLL_SLEEP_US,
 					ZL_POLL_TIMEOUT_US);
+}
+
+/*
+ * Register 'output_mode'
+ * Page: 14, Offset: 0x05, Size: 8 bits
+ */
+#define ZL_REG_OUTPUT_MODE	     ZL_REG_ADDR(14, 0x05)
+#define ZL_OUTPUT_MODE_SIGNAL_FORMAT GENMASK(7, 4)
+
+static inline __maybe_unused int
+zl3073x_mb_read_output_mode(struct zl3073x_dev *zldev, u8 *value)
+{
+	unsigned int v;
+	int rc;
+
+	lockdep_assert_held(&zldev->mailbox_lock);
+	rc = regmap_read(zldev->regmap, ZL_REG_OUTPUT_MODE, &v);
+	*value = v;
+	return rc;
 }
 
 #endif /* __LINUX_MFD_ZL3073X_REGS_H */
