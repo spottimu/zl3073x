@@ -116,6 +116,238 @@ static const struct regmap_config zl3073x_regmap_config = {
 };
 
 /**
+ * zl3073x_mb_dpll_read - read given DPLL configuration to mailbox
+ * @zldev: pointer to device structure
+ * @index: DPLL index
+ *
+ * Reads configuration of given DPLL into DPLL mailbox.
+ *
+ * Context: Process context. Expects zldev->regmap_lock to be held by caller.
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_dpll_read(struct zl3073x_dev *zldev, u8 index)
+{
+	int rc;
+
+	/* Select requested index in mask register */
+	rc = zl3073x_mb_write_dpll_mb_mask(zldev, BIT(index));
+	if (rc)
+		return rc;
+
+	/* Perform read operation */
+	rc = zl3073x_mb_write_dpll_mb_sem(zldev, ZL_DPLL_MB_SEM_RD);
+	if (rc)
+		return rc;
+
+	/* Wait for the command to actually finish */
+	return zl3073x_mb_poll_dpll_mb_sem(zldev, ZL_DPLL_MB_SEM_RD);
+}
+EXPORT_SYMBOL_GPL(zl3073x_mb_dpll_read);
+
+/**
+ * zl3073x_mb_dpll_write - write given DPLL configuration from mailbox
+ * @zldev: pointer to device structure
+ * @index: DPLL index
+ *
+ * Writes (commits) configuration of given DPLL from DPLL mailbox.
+ *
+ * Context: Process context. Expects zldev->regmap_lock to be held by caller.
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_dpll_write(struct zl3073x_dev *zldev, u8 index)
+{
+	int rc;
+
+	/* Select requested index in mask register */
+	rc = zl3073x_mb_write_dpll_mb_mask(zldev, BIT(index));
+	if (rc)
+		return rc;
+
+	/* Perform read operation */
+	rc = zl3073x_mb_write_dpll_mb_sem(zldev, ZL_DPLL_MB_SEM_WR);
+	if (rc)
+		return rc;
+
+	/* Wait for the command to actually finish */
+	return zl3073x_mb_poll_dpll_mb_sem(zldev, ZL_DPLL_MB_SEM_WR);
+}
+EXPORT_SYMBOL_GPL(zl3073x_mb_dpll_write);
+
+/**
+ * zl3073x_mb_output_read - read given output configuration to mailbox
+ * @zldev: pointer to device structure
+ * @index: output index
+ *
+ * Reads configuration of given output into output mailbox.
+ *
+ * Context: Process context. Expects zldev->regmap_lock to be held by caller.
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_output_read(struct zl3073x_dev *zldev, u8 index)
+{
+	int rc;
+
+	/* Select requested index in mask register */
+	rc = zl3073x_mb_write_output_mb_mask(zldev, BIT(index));
+	if (rc)
+		return rc;
+
+	/* Perform read operation */
+	rc = zl3073x_mb_write_output_mb_sem(zldev, ZL_OUTPUT_MB_SEM_RD);
+	if (rc)
+		return rc;
+
+	/* Wait for the command to actually finish */
+	return zl3073x_mb_poll_output_mb_sem(zldev, ZL_OUTPUT_MB_SEM_RD);
+}
+EXPORT_SYMBOL_GPL(zl3073x_mb_output_read);
+
+/**
+ * zl3073x_mb_output_write - write given output configuration from mailbox
+ * @zldev: pointer to device structure
+ * @index: output index
+ *
+ * Writes (commits) configuration of given output from output mailbox.
+ *
+ * Context: Process context. Expects zldev->regmap_lock to be held by caller.
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_output_write(struct zl3073x_dev *zldev, u8 index)
+{
+	int rc;
+
+	/* Select requested index in mask register */
+	rc = zl3073x_mb_write_output_mb_mask(zldev, BIT(index));
+	if (rc)
+		return rc;
+
+	/* Perform read operation */
+	rc = zl3073x_mb_write_output_mb_sem(zldev, ZL_OUTPUT_MB_SEM_WR);
+	if (rc)
+		return rc;
+
+	/* Wait for the command to actually finish */
+	return zl3073x_mb_poll_output_mb_sem(zldev, ZL_OUTPUT_MB_SEM_WR);
+}
+EXPORT_SYMBOL_GPL(zl3073x_mb_output_write);
+
+/**
+ * zl3073x_mb_ref_read - read given reference configuration to mailbox
+ * @zldev: pointer to device structure
+ * @index: reference index
+ *
+ * Reads configuration of given reference into ref mailbox.
+ *
+ * Context: Process context. Expects zldev->regmap_lock to be held by caller.
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_ref_read(struct zl3073x_dev *zldev, u8 index)
+{
+	int rc;
+
+	/* Select requested index in mask register */
+	rc = zl3073x_mb_write_ref_mb_mask(zldev, BIT(index));
+	if (rc)
+		return rc;
+
+	/* Perform read operation */
+	rc = zl3073x_mb_write_ref_mb_sem(zldev, ZL_REF_MB_SEM_RD);
+	if (rc)
+		return rc;
+
+	/* Wait for the command to actually finish */
+	return zl3073x_mb_poll_ref_mb_sem(zldev, ZL_REF_MB_SEM_RD);
+}
+EXPORT_SYMBOL_GPL(zl3073x_mb_ref_read);
+
+/**
+ * zl3073x_mb_ref_write - write given reference configuration from mailbox
+ * @zldev: pointer to device structure
+ * @index: reference index
+ *
+ * Writes (commits) configuration of given reference from ref mailbox.
+ *
+ * Context: Process context. Expects zldev->regmap_lock to be held by caller.
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_ref_write(struct zl3073x_dev *zldev, u8 index)
+{
+	int rc;
+
+	/* Select requested index in mask register */
+	rc = zl3073x_mb_write_ref_mb_mask(zldev, BIT(index));
+	if (rc)
+		return rc;
+
+	/* Perform read operation */
+	rc = zl3073x_mb_write_ref_mb_sem(zldev, ZL_REF_MB_SEM_WR);
+	if (rc)
+		return rc;
+
+	/* Wait for the command to actually finish */
+	return zl3073x_mb_poll_ref_mb_sem(zldev, ZL_REF_MB_SEM_WR);
+}
+EXPORT_SYMBOL_GPL(zl3073x_mb_ref_write);
+
+/**
+ * zl3073x_mb_synth_read - read given synth configuration to mailbox
+ * @zldev: pointer to device structure
+ * @index: synth index
+ *
+ * Reads configuration of given synth into synth mailbox.
+ *
+ * Context: Process context. Expects zldev->regmap_lock to be held by caller.
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_synth_read(struct zl3073x_dev *zldev, u8 index)
+{
+	int rc;
+
+	/* Select requested index in mask register */
+	rc = zl3073x_mb_write_synth_mb_mask(zldev, BIT(index));
+	if (rc)
+		return rc;
+
+	/* Perform read operation */
+	rc = zl3073x_mb_write_synth_mb_sem(zldev, ZL_SYNTH_MB_SEM_RD);
+	if (rc)
+		return rc;
+
+	/* Wait for the command to actually finish */
+	return zl3073x_mb_poll_synth_mb_sem(zldev, ZL_SYNTH_MB_SEM_RD);
+}
+EXPORT_SYMBOL_GPL(zl3073x_mb_synth_read);
+
+/**
+ * zl3073x_mb_synth_write - write given synth configuration from mailbox
+ * @zldev: pointer to device structure
+ * @index: synth index
+ *
+ * Writes (commits) configuration of given synth from synth mailbox.
+ *
+ * Context: Process context. Expects zldev->regmap_lock to be held by caller.
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_synth_write(struct zl3073x_dev *zldev, u8 index)
+{
+	int rc;
+
+	/* Select requested index in mask register */
+	rc = zl3073x_mb_write_synth_mb_mask(zldev, BIT(index));
+	if (rc)
+		return rc;
+
+	/* Perform read operation */
+	rc = zl3073x_mb_write_synth_mb_sem(zldev, ZL_SYNTH_MB_SEM_WR);
+	if (rc)
+		return rc;
+
+	/* Wait for the command to actually finish */
+	return zl3073x_mb_poll_synth_mb_sem(zldev, ZL_SYNTH_MB_SEM_WR);
+}
+EXPORT_SYMBOL_GPL(zl3073x_mb_synth_write);
+
+/**
  * zl3073x_devlink_info_get - Devlink device info callback
  * @devlink: devlink structure pointer
  * @req: devlink request pointer to store information

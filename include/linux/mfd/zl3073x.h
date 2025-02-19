@@ -47,4 +47,16 @@ static inline void zl3073x_mailbox_unlock(struct zl3073x_dev *zldev)
 DEFINE_GUARD(zl3073x_mailbox, struct zl3073x_dev *, zl3073x_mailbox_lock(_T),
 	     zl3073x_mailbox_unlock(_T));
 
+/*
+ * Mailbox operations
+ */
+int zl3073x_mb_dpll_read(struct zl3073x_dev *zldev, u8 index);
+int zl3073x_mb_dpll_write(struct zl3073x_dev *zldev, u8 index);
+int zl3073x_mb_output_read(struct zl3073x_dev *zldev, u8 index);
+int zl3073x_mb_output_write(struct zl3073x_dev *zldev, u8 index);
+int zl3073x_mb_ref_read(struct zl3073x_dev *zldev, u8 index);
+int zl3073x_mb_ref_write(struct zl3073x_dev *zldev, u8 index);
+int zl3073x_mb_synth_read(struct zl3073x_dev *zldev, u8 index);
+int zl3073x_mb_synth_write(struct zl3073x_dev *zldev, u8 index);
+
 #endif /* __LINUX_MFD_ZL3073X_H */
