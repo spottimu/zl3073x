@@ -878,6 +878,12 @@ zl3073x_dpll_output_pin_frequency_set(const struct dpll_pin *dpll_pin,
 
 	guard(mutex)(&zldev->multiop_lock);
 
+	/* Load output configuration */
+	rc = zl3073x_mb_op(zldev, ZL_REG_OUTPUT_MB_SEM, ZL_OUTPUT_MB_SEM_RD,
+			   ZL_REG_OUTPUT_MB_MASK, BIT(output));
+	if (rc)
+		return rc;
+
 	/* Check signal format */
 	if (signal_format != ZL_OUTPUT_MODE_SIGNAL_FORMAT_2_NDIV &&
 	    signal_format != ZL_OUTPUT_MODE_SIGNAL_FORMAT_2_NDIV_INV) {
@@ -898,12 +904,6 @@ zl3073x_dpll_output_pin_frequency_set(const struct dpll_pin *dpll_pin,
 				     ZL_REG_OUTPUT_MB_SEM, ZL_OUTPUT_MB_SEM_WR,
 				     ZL_REG_OUTPUT_MB_MASK, BIT(output));
 	}
-
-	/* Read output configuration */
-	rc = zl3073x_mb_op(zldev, ZL_REG_OUTPUT_MB_SEM, ZL_OUTPUT_MB_SEM_RD,
-			   ZL_REG_OUTPUT_MB_MASK, BIT(output));
-	if (rc)
-		return rc;
 
 	/* For N-divided signal format get current divisor */
 	rc = zl3073x_read_u32(zldev, ZL_REG_OUTPUT_DIV, &cur_div);
@@ -1198,13 +1198,61 @@ zl3073x_dpll_pin_info_package_label_set(struct zl3073x_dpll_pin *pin,
 }
 
 /**
+ * zl3073x_dpll_check_frequency - verify frequency for given pin
+ * @pin: pointer to pin
+ * @freq: frequency to check
+ *
+ * The function checks the given frequency is valid for the device. For input
+ * pins it checks that the frequency can be factorized using supported base
+ * frequencies. For output pins it checks that the frequency divides connected
+ * synth frequency without remainder.
+ *
+ * Return: true if the frequency is valid, false if not.
+ */
+static bool
+zl3073x_dpll_check_frequency(struct zl3073x_dpll_pin *pin, u64 freq)
+{
+	if (zl3073x_dpll_is_input_pin(pin)) {
+		u16 base, mult;
+		int rc;
+
+		/* Check if the frequency can be factorized */
+		rc = zl3073x_dpll_input_ref_frequency_factorize(freq, &base,
+								&mult);
+		if (!rc)
+			return true;
+	} else {
+		struct zl3073x_dev *zldev = pin_to_dev(pin);
+		u64 synth_freq, rem;
+		u8 synth;
+
+		/* Get output pin synthesizer */
+		synth = zl3073x_dpll_pin_synth_get(pin);
+
+		/* Get synth frequency */
+		synth_freq = zl3073x_synth_freq_get(zldev, synth);
+
+		/* Check the frequency divides synth frequency */
+		div64_u64_rem(synth_freq, freq, &rem);
+		if (!rem)
+			return true;
+	}
+
+	dev_warn(zldpll->dev,
+		 "Unsupported frequency %llu Hz in firmware node\n", freq);
+
+	return false;
+}
+
+/**
  * zl3073x_dpll_pin_info_get - get pin info
  * @pin: pin whose info is returned
  *
  * The function looks for firmware node for the given pin if it is provided
  * by the system firmware (DT or ACPI), allocates pin info structure,
  * generates package label string according pin type and its order number
- * and optionally fetches board label from the firmware node if it exists.
+ * and optionally fetches board label and supported frequencies from
+ * the firmware node if they exist.
  *
  * Pointer that is returned by this function should be freed
  * using @zl3073x_dpll_pin_info_put().
@@ -1218,7 +1266,10 @@ zl3073x_dpll_pin_info_get(struct zl3073x_dpll_pin *pin)
 {
 	struct device *dev = pin_to_dpll(pin)->dev;
 	struct zl3073x_dpll_pin_info *pin_info;
+	struct dpll_pin_frequency *ranges;
+	int i, j, num_freqs, rc;
 	const char *pin_type;
+	u64 *freqs;
 
 	/* Allocate pin info structure */
 	pin_info = kzalloc(sizeof(*pin_info), GFP_KERNEL);
@@ -1269,7 +1320,63 @@ zl3073x_dpll_pin_info_get(struct zl3073x_dpll_pin *pin)
 				 pin_type);
 	}
 
+	/* Read supported frequencies property if it is specified */
+	num_freqs = fwnode_property_count_u64(pin_info->fwnode,
+					      "supported-frequencies-hz");
+	if (num_freqs <= 0)
+		/* Return if the property does not exist or number is 0 */
+		return pin_info;
+
+	/* The firmware node specifies list of supported frequencies while
+	 * DPLL core pin properties requires list of frequency ranges.
+	 * So read the frequency list into temporary array.
+	 */
+	freqs = kcalloc(num_freqs, sizeof(*freqs), GFP_KERNEL);
+	if (!freqs) {
+		rc = -ENOMEM;
+		goto err_alloc_freqs;
+	}
+
+	/* Read frequencies list from firmware node */
+	fwnode_property_read_u64_array(pin_info->fwnode,
+				       "supported-frequencies-hz", freqs,
+				       num_freqs);
+
+	/* Allocate frequency ranges list and fill it */
+	ranges = kcalloc(num_freqs, sizeof(*ranges), GFP_KERNEL);
+	if (!ranges) {
+		rc = -ENOMEM;
+		goto err_alloc_ranges;
+	}
+
+	/* Convert list of frequencies to list of frequency ranges but
+	 * filter-out frequencies that are not representable by device
+	 */
+	for (i = 0, j = 0; i < num_freqs; i++) {
+		struct dpll_pin_frequency freq = DPLL_PIN_FREQUENCY(freqs[i]);
+
+		if (zl3073x_dpll_check_frequency(pin, freqs[i])) {
+			ranges[j] = freq;
+			j++;
+		}
+	}
+
+	/* Save number of freq ranges and pointer to them into pin properties */
+	pin_info->props.freq_supported = ranges;
+	pin_info->props.freq_supported_num = j;
+
+	/* Free temporary array */
+	kfree(freqs);
+
 	return pin_info;
+
+err_alloc_ranges:
+	kfree(freqs);
+err_alloc_freqs:
+	fwnode_handle_put(pin_info->fwnode);
+	kfree(pin_info);
+
+	return ERR_PTR(rc);
 }
 
 /**
@@ -1281,6 +1388,9 @@ zl3073x_dpll_pin_info_get(struct zl3073x_dpll_pin *pin)
 static void
 zl3073x_dpll_pin_info_put(struct zl3073x_dpll_pin_info *pin_info)
 {
+	/* Free supported frequency ranges list if it is present */
+	kfree(pin_info->props.freq_supported);
+
 	/* Put firmware handle if it is present */
 	if (pin_info->fwnode)
 		fwnode_handle_put(pin_info->fwnode);
