@@ -361,7 +361,6 @@
 		#size-cells = <0>;
 
 		pin@0 { /* REF0P */
-			compatible = "dpll-pin";
 			reg = <0>;
 
 			esync-control;
@@ -378,7 +377,6 @@
 			type = "ext";
 		};
 		pin@1 { /* REF0N */
-			compatible = "dpll-pin";
 			reg = <1>;
 
 			esync-control;
@@ -395,7 +393,6 @@
 			type = "ext";
 		};
 		pin@2 { /* REF1P */
-			compatible = "dpll-pin";
 			reg = <2>;
 
 			esync-control;
@@ -412,7 +409,6 @@
 			type = "ext";
 		};
 		pin@3 { /* REF1N */
-			compatible = "dpll-pin";
 			reg = <3>;
 
 			esync-control;
@@ -429,7 +425,6 @@
 			type = "ext";
 		};
 		pin@4 { /* REF2P */
-			compatible = "dpll-pin";
 			reg = <4>;
 
 			esync-control;
@@ -446,7 +441,6 @@
 			type = "ext";
 		};
 		pin@5 { /* REF2N */
-			compatible = "dpll-pin";
 			reg = <5>;
 
 			esync-control;
@@ -463,7 +457,6 @@
 			type = "ext";
 		};
 		pin@7 { /* REF3N */
-			compatible = "dpll-pin";
 			reg = <7>;
 
 			esync-control;
@@ -480,7 +473,6 @@
 			type = "ext";
 		};
 		pin@8 { /* REF4P */
-			compatible = "dpll-pin";
 			reg = <8>;
 
 			esync-control;
@@ -497,7 +489,6 @@
 			type = "ext";
 		};
 		pin@9 { /* REF4N */
-			compatible = "dpll-pin";
 			reg = <9>;
 
 			esync-control;
@@ -520,7 +511,6 @@
 		#size-cells = <0>;
 
 		pin@0 { /* OUT0P */
-			compatible = "dpll-pin";
 			reg = <0>;
 
 			esync-control;
@@ -534,7 +524,6 @@
 			type = "gnss";
 		};
 		pin@1 { /* OUT0N */
-			compatible = "dpll-pin";
 			reg = <1>;
 
 			esync-control;
@@ -548,7 +537,6 @@
 			type = "gnss";
 		};
 		pin@2 { /* OUT1P */
-			compatible = "dpll-pin";
 			reg = <2>;
 
 			esync-control;
@@ -562,7 +550,6 @@
 			type = "gnss";
 		};
 		pin@3 { /* OUT1N */
-			compatible = "dpll-pin";
 			reg = <3>;
 
 			esync-control;
@@ -576,7 +563,6 @@
 			type = "gnss";
 		};
 		pin@4 { /* OUT2P */
-			compatible = "dpll-pin";
 			reg = <4>;
 
 			esync-control;
@@ -590,7 +576,6 @@
 			type = "gnss";
 		};
 		pin@6 { /* OUT3P & OUT3N LVDS */
-			compatible = "dpll-pin";
 			reg = <6>;
 
 			esync-control;
@@ -604,7 +589,6 @@
 			type = "gnss";
 		};
 		pin@8 { /* OUT4P & OUT4N LVDS */
-			compatible = "dpll-pin";
 			reg = <8>;
 
 			esync-control;
@@ -618,7 +602,6 @@
 			type = "gnss";
 		};
 		pin@12 { /* OUT6P & OUT6N LVDS */
-			compatible = "dpll-pin";
 			reg = <12>;
 
 			esync-control;
@@ -632,7 +615,6 @@
 			type = "gnss";
 		};
 		pin@14 { /* OUT7P & OUT7N LVDS */
-			compatible = "dpll-pin";
 			reg = <14>;
 
 			esync-control;
@@ -646,7 +628,6 @@
 			type = "gnss";
 		};
 		pin@16 { /* OUT8P & OUT8N LVDS */
-			compatible = "dpll-pin";
 			reg = <16>;
 
 			esync-control;
@@ -660,7 +641,6 @@
 			type = "gnss";
 		};
 		pin@18 { /* OUT9P */
-			compatible = "dpll-pin";
 			reg = <18>;
 
 			esync-control;
@@ -674,7 +654,6 @@
 			type = "gnss";
 		};
 		pin@19 { /* OUT9N */
-			compatible = "dpll-pin";
 			reg = <19>;
 
 			esync-control;
