@@ -229,6 +229,19 @@ zl3073x_read_dpll_mode_refsel(struct zl3073x_dev *zldev, unsigned int idx,
 	return rc;
 }
 
+static inline __maybe_unused int
+zl3073x_write_dpll_mode_refsel(struct zl3073x_dev *zldev, unsigned int idx,
+			       u8 value)
+{
+	unsigned int addr;
+
+	if (idx >= ZL_REG_DPLL_MODE_REFSEL_ITEMS)
+		return -EINVAL;
+
+	addr = ZL_REG_DPLL_MODE_REFSEL + idx * ZL_REG_DPLL_MODE_REFSEL_STRIDE;
+	return regmap_write(zldev->regmap, addr, value);
+}
+
 /***********************************
  * Register Page 9, Synth and Output
  ***********************************/
