@@ -425,6 +425,55 @@ int zl3073x_mb_output_write(struct zl3073x_dev *zldev, u8 index, u32 fields,
 EXPORT_SYMBOL_NS_GPL(zl3073x_mb_output_write, "ZL3073X");
 
 /**
+ * zl3073x_mb_phase_meas_do - perform DPLL-to-refs phase measurement
+ * @zldev: zl3073x device pointer
+ * @dpll_id: DPLL channel id
+ * @mb: mailbox to store measured phases
+ *
+ * Performs DPLL to all references phase measurement and store the results
+ * into given mailbox.
+ *
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_phase_meas_do(struct zl3073x_dev *zldev, u8 dpll_id,
+			     struct zl3073x_mb_phase_meas *mb)
+{
+	u8 dpll_meas_ctrl;
+	int i, rc;
+
+	guard(mutex)(&zldev->mb_phase_meas_lock);
+
+	/* Read DPLL measurement control register */
+	rc = zl3073x_read_reg(zldev, ZL_REG_DPLL_MEAS_CTRL, &dpll_meas_ctrl);
+	if (rc)
+		return rc;
+
+	/* Enable DPLL measurement block */
+	dpll_meas_ctrl |= ZL_DPLL_MEAS_CTRL_EN;
+	rc = zl3073x_write_reg(zldev, ZL_REG_DPLL_MEAS_CTRL, &dpll_meas_ctrl);
+	if (rc)
+		return rc;
+
+	/* Request to perform a measurement */
+	rc = zl3073x_mb_cmd_do(zldev, ZL_REG_REF_PHASE_ERR_READ_RQST,
+			       ZL_REF_PHASE_ERR_READ_RQST_RD,
+			       ZL_REG_DPLL_MEAS_IDX, dpll_id);
+	if (rc)
+		return rc;
+
+	/* Read and store DPLL-to-REFx phase measurements */
+	for (i = 0; i < ZL3073X_NUM_INPUTS; i++) {
+		rc = zl3073x_read_reg(zldev, ZL_REG_REF_PHASE(i),
+				      &mb->ref_phase[i]);
+		if (rc)
+			break;
+	}
+
+	return rc;
+}
+EXPORT_SYMBOL_NS_GPL(zl3073x_mb_phase_meas_do, "ZL3073X");
+
+/**
  * zl3073x_mb_ref_read - read given reference configuration to mailbox
  * @zldev: pointer to device structure
  * @index: reference index
@@ -1000,6 +1049,12 @@ int zl3073x_dev_probe(struct zl3073x_dev *zldev,
 	if (rc)
 		return dev_err_probe(zldev->dev, rc,
 				     "Failed to init DPLL mailbox mutex\n");
+
+	/* Initialize phase measurement mailbox mutex */
+	rc = devm_mutex_init(zldev->dev, &zldev->mb_phase_meas_lock);
+	if (rc)
+		return dev_err_probe(zldev->dev, rc,
+				     "Failed to init phase meas mailbox mutex\n");
 
 	/* Initialize ref mailbox mutex */
 	rc = devm_mutex_init(zldev->dev, &zldev->mb_ref_lock);

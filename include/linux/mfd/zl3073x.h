@@ -58,6 +58,7 @@ struct zl3073x_synth {
  * @regmap: regmap to access device registers
  * @clock_id: clock id of the device
  * @mb_dpll_lock: mutex to protect DPLL mailbox
+ * @mb_phase_meas_lock: mutex to protect phase measurement mailbox
  * @mb_ref_lock: mutex to protect reference mailbox
  * @input: array of inputs' invariants
  * @output: array of outputs' invariants
@@ -68,6 +69,7 @@ struct zl3073x_dev {
 	struct regmap		*regmap;
 	u64			clock_id;
 	struct mutex		mb_dpll_lock;
+	struct mutex		mb_phase_meas_lock;
 	struct mutex		mb_ref_lock;
 
 	/* Invariants */
@@ -105,6 +107,21 @@ int zl3073x_mb_dpll_read(struct zl3073x_dev *zldev, u8 index, u32 fields,
 			 struct zl3073x_mb_dpll *mb);
 int zl3073x_mb_dpll_write(struct zl3073x_dev *zldev, u8 index, u32 fields,
 			  struct zl3073x_mb_dpll *mb);
+
+/**************************************
+ * Phase measurement mailbox operations
+ **************************************/
+
+/**
+ * struct zl3073x_mb_phase_meas - Phase measurement mailbox
+ * @ref_phase: array of input reference phases
+ */
+struct zl3073x_mb_phase_meas {
+	u64	ref_phase[ZL3073X_NUM_INPUTS];
+};
+
+int zl3073x_mb_phase_meas_do(struct zl3073x_dev *zldev, u8 dpll_id,
+			     struct zl3073x_mb_phase_meas *mb);
 
 /***************************
  * Output mailbox operations
