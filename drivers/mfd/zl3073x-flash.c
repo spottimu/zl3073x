@@ -1237,6 +1237,8 @@ int zl3073x_flash_update(struct devlink *devlink,
 	enum zl3073x_flash_image_id id;
 	int rc;
 
+	guard(zl3073x)(zldev);
+
 	zl3073x_flash_notify(zldev, "Preparing to flash", params->component,
 			     0, 0);
 
