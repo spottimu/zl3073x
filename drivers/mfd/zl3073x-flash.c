@@ -1204,6 +1204,8 @@ static int zl3073x_flash_image_flash_all(struct zl3073x_dev *zldev,
 	if (rc)
 		return rc;
 
+	return 0;
+
 	for (id = 0; id < ZL3073X_NUM_FLASH_IMAGES; id++) {
 		if (!images[id]->type->flash)
 			continue;
@@ -1261,7 +1263,3 @@ err_load:
 
 	return rc;
 }
-
-MODULE_AUTHOR("Ivan Vecera <ivecera@redhat.com>");
-MODULE_DESCRIPTION("Microchip ZL3073x core driver");
-MODULE_LICENSE("GPL");
