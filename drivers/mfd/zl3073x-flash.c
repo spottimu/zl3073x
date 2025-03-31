@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#define DEBUG
 #include <linux/bitfield.h>
 #include "zl3073x.h"
 #include "zl3073x-flash.h"
@@ -193,14 +194,17 @@ static void zl3073x_flash_image_free(struct zl3073x_flash_image *image)
 static ssize_t zl3073x_flash_image_readline(char *dst, size_t dst_sz,
 					    const char *src, size_t src_sz)
 {
+	size_t skip, len;
 	const char *ptr;
-	size_t len;
 
 	/* Skip any existing new-lines at the beginning */
 	ptr = memchr_inv(src, '\n', src_sz);
 	if (ptr) {
-		src_sz -= ptr - src;
+		skip = ptr - src;
+		src_sz -= skip;
 		src = ptr;
+	} else {
+		skip = 0;
 	}
 
 	/* Now look for the next new-line in the source */
@@ -216,7 +220,7 @@ static ssize_t zl3073x_flash_image_readline(char *dst, size_t dst_sz,
 	*(dst+len) = '\0';
 
 	/* Return number of read chars */
-	return len;
+	return len + skip;
 }
 
 #define FLASH_ERR_PREFIX "FW update failed: "
