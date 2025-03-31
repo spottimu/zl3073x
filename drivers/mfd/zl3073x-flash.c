@@ -1254,6 +1254,14 @@ int zl3073x_flash_update(struct devlink *devlink,
 	if (rc)
 		goto err_load;
 
+	if (!images[ZL3073X_FLASH_IMAGE_UTIL]) {
+		zl3073x_flash_notify(zldev,
+				     "Flash utility is missing in firmware",
+				     params->component, 0, 0);
+		rc = -EINVAL;
+		goto err_load;
+	}
+
 	/* Flash all loaded images */
 	rc = zl3073x_flash_image_flash_all(zldev, images, extack);
 
