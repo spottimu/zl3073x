@@ -1208,10 +1208,8 @@ static int zl3073x_flash_image_flash_all(struct zl3073x_dev *zldev,
 	if (rc)
 		return rc;
 
-	return 0;
-
 	for (id = 0; id < ZL3073X_NUM_FLASH_IMAGES; id++) {
-		if (!images[id]->type->flash)
+		if (!images[id] || !images[id]->type->flash)
 			continue;
 
 		rc = images[id]->type->flash(zldev, images[id], extack);
