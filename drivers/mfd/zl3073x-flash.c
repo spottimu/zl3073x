@@ -923,6 +923,9 @@ static int zl3073x_flash_sectors(struct zl3073x_dev *zldev,
 		zl3073x_flash_notify(zldev, "Flashing image", image->type->name,
 				     idx, image->nwords);
 
+		dev_info(zldev->dev, "Flashing %u dwords to page %u\n",
+			 bsize, page);
+
 		/* Execute sectors flash operation */
 		rc = zl3073x_flash_cmd_wait(zldev,
 					    ZL3073X_REG_WRITE_FLASH_OP_SECTORS);
