@@ -724,7 +724,7 @@ static int zl3073x_flash_wait_ready(struct zl3073x_dev *zldev,
 	timeout = jiffies + msecs_to_jiffies(timeout_ms);
 
 	while (time_before(jiffies, timeout)) {
-		u32 value;
+		u8 value;
 
 		/* Read write_flash register value */
 		rc = zl3073x_read_write_flash(zldev, &value);
@@ -760,8 +760,8 @@ static int zl3073x_flash_cmd_wait(struct zl3073x_dev *zldev, u32 operation)
 {
 #define FLASH_PHASE1_TIMEOUT_MS 60000	/* up to 1 minute */
 #define FLASH_PHASE2_TIMEOUT_MS 120000	/* up to 2 minutes */
-	u32 err_count, err_cause, tmp;
-	u8 state;
+	u32 err_count, err_cause;
+	u8 state, tmp;
 	int rc;
 
 	dev_dbg(zldev->dev, "Sending flash command: 0x%x\n", operation);

@@ -52,7 +52,7 @@ ZL3073X_REG32_DEF(image_size,			0x0088);
 ZL3073X_REG32_DEF(flash_index_read,		0x008c);
 ZL3073X_REG32_DEF(flash_index_write,		0x0090);
 ZL3073X_REG32_DEF(fill_pattern,			0x0094);
-ZL3073X_REG32_DEF(write_flash,			0x0098);
+ZL3073X_REG8_DEF(write_flash,			0x0098);
 #define ZL3073X_REG_WRITE_FLASH_OP		GENMASK(2, 0)
 #define ZL3073X_REG_WRITE_FLASH_OP_DONE		0x0
 #define ZL3073X_REG_WRITE_FLASH_OP_SECTORS	0x2
