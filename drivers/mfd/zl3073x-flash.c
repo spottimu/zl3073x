@@ -906,7 +906,7 @@ static int zl3073x_flash_sectors(struct zl3073x_dev *zldev,
 			goto finish;
 
 		/* Set size of block to flash */
-		rc = zl3073x_write_image_size(zldev,bsize);
+		rc = zl3073x_write_image_size(zldev, bsize * 4);
 		if (rc)
 			goto finish;
 
@@ -976,7 +976,7 @@ static int zl3073x_flash_page(struct zl3073x_dev *zldev,
 		goto finish;
 
 	/* Set size of block to flash */
-	rc = zl3073x_write_image_size(zldev, image->nwords);
+	rc = zl3073x_write_image_size(zldev, image->nwords * 4);
 	if (rc)
 		goto finish;
 
