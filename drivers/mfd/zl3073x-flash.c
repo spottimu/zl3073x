@@ -616,7 +616,7 @@ static int zl3073x_flash_download_block(struct zl3073x_dev *zldev,
 	timeout = jiffies + msecs_to_jiffies(CHECK_DELAY);
 
 	dest_addr = image->type->load_addr;
-	for (idx = start; idx < size; idx++, dest_addr += 4) {
+	for (idx = start; idx < start+size; idx++, dest_addr += 4) {
 		/* Write current word to HW memory */
 		rc = zl3073x_hwreg_write(zldev, dest_addr, image->words[idx]);
 		if (rc) {
