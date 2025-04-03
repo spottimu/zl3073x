@@ -5,6 +5,12 @@
 #include "zl3073x.h"
 #include "zl3073x-flash.h"
 
+/*
+ * Register Map Page 0, General
+ */
+ZL3073X_REG8_DEF(info,			0x0000);
+ZL3073X_REG8_DEF(reset,			0x0018);
+#define ZL_RESET			BIT(0)
 /**
  * enum zl3073x_flash_image_id - Identifiers for possible flash image types
  */
@@ -554,6 +560,8 @@ static int zl3073x_hwreg_write_seq(struct zl3073x_dev *zldev,
 	int i, rc = 0;
 
 	for (i = 0; i < num_items; i++) {
+		dev_info(zldev->dev, "Write 0x%0x [0x%0x] to 0x%0x",
+			 seq[i].value, seq[i].mask, seq[i].addr);
 		if (seq[i].mask == U32_MAX)
 			/* Write value directly */
 			rc = zl3073x_hwreg_write(zldev, seq[i].addr,
@@ -1110,12 +1118,30 @@ static int zl3073x_flash_prepare(struct zl3073x_dev *zldev,
 {
 	/* Sequence to be written prior utility download */
 	static const struct zl3073x_hwreg_seq_item pre_seq[] = {
+#if 1
+		HWREG_SEQ_ITEM(0x80000400, 1, BIT(0), 0),
+		HWREG_SEQ_ITEM(0x80206340, 1, BIT(4), 0),
+		HWREG_SEQ_ITEM(0x10000000, 1, BIT(2), 0),
+		HWREG_SEQ_ITEM(0x10000024, 0x00000001, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10000020, 0x00000001, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10000000, 1, BIT(10), 1000),
+#else
 		HWREG_SEQ_ITEM(0x80000400, 1, BIT(0), 1000),
 		HWREG_SEQ_ITEM(0x10000000, 1, BIT(2), 1000),
 		HWREG_SEQ_ITEM(0x10000020, 1, BIT(0), 1000),
+#endif
 	};
 	/* Sequence to be written after utility download */
 	static const struct zl3073x_hwreg_seq_item post_seq[] = {
+#if 1
+		HWREG_SEQ_ITEM(0x10400004, 0x000000C0, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10400008, 0x00000000, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10400010, FLASH_UTIL_ADDR, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10400014, FLASH_UTIL_ADDR+4, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10000000, 1, GENMASK(10, 9), 0),
+		HWREG_SEQ_ITEM(0x10000020, 0x00000000, U32_MAX, 0),
+		HWREG_SEQ_ITEM(0x10000000, 0, BIT(0), 1000),
+#else
 		HWREG_SEQ_ITEM(0x10400004, 0x000000C0, U32_MAX, 0),
 		HWREG_SEQ_ITEM(0x10400008, 0x00000000, U32_MAX, 0),
 		HWREG_SEQ_ITEM(0x10400010, FLASH_UTIL_ADDR, U32_MAX, 0),
@@ -1123,6 +1149,7 @@ static int zl3073x_flash_prepare(struct zl3073x_dev *zldev,
 		HWREG_SEQ_ITEM(0x10000000, 1, BIT(9), 1000),
 		HWREG_SEQ_ITEM(0x10000020, 0, BIT(0), 1000),
 		HWREG_SEQ_ITEM(0x80000400, 0, BIT(0), 1000),
+#endif
 	};
 	unsigned int err_count, err_cause = 0;
 	int rc;
@@ -1239,6 +1266,11 @@ int zl3073x_flash_update(struct devlink *devlink,
 			 struct devlink_flash_update_params *params,
 			 struct netlink_ext_ack *extack)
 {
+	/* Sequence to be written prior utility download */
+	static const struct zl3073x_hwreg_seq_item reset_seq[] = {
+		HWREG_SEQ_ITEM(0x80000404, 1, BIT(0), 0),
+		HWREG_SEQ_ITEM(0x80000410, 1, BIT(0), 1000),
+	};
 	struct zl3073x_flash_image *images[ZL3073X_NUM_FLASH_IMAGES] = { };
 	struct zl3073x_dev *zldev = devlink_priv(devlink);
 	enum zl3073x_flash_image_id id;
@@ -1269,6 +1301,30 @@ int zl3073x_flash_update(struct devlink *devlink,
 	/* Free allocated images */
 	for (id = 0; id < ZL3073X_NUM_FLASH_IMAGES; id++)
 		zl3073x_flash_image_free(images[id]);
+
+	rc = zl3073x_write_reset(zldev, ZL_RESET);
+	if (rc)
+		dev_err(zldev->dev, "Failed to set reset bit\n");
+
+	dev_info(zldev->dev, "Perform reset...\n");
+	rc = zl3073x_hwreg_write_seq(zldev, reset_seq, ARRAY_SIZE(reset_seq));
+	if (rc)
+		dev_err(zldev->dev,
+			"Failed to write reset seq: %d\n", rc);
+
+	for (int i = 0; i < 20; i++) {
+		u8 x;
+
+		x = 0;
+		rc = zl3073x_read_reset(zldev, &x);
+		dev_info(zldev->dev, "reset: 0x%0x, rc: %d\n", x, rc);
+
+		x = 0;
+		rc = zl3073x_read_info(zldev, &x);
+		dev_info(zldev->dev, "info: 0x%0x, rc: %d\n", x, rc);
+
+		msleep(10);
+	}
 
 err_load:
 	zl3073x_flash_notify(zldev, rc ? "Flashing failed" : "Flashing done",
