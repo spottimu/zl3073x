@@ -440,6 +440,8 @@ int zl3073x_mb_ref_read(struct zl3073x_dev *zldev, u8 index, u32 fields,
 {
 	int rc;
 
+	guard(mutex)(&zldev->mb_ref_lock);
+
 	rc = zl3073x_mb_cmd_do(zldev, ZL_REG_REF_MB_SEM, ZL_REF_MB_SEM_RD,
 			       ZL_REG_REF_MB_MASK, BIT(index));
 
@@ -491,6 +493,8 @@ int zl3073x_mb_ref_write(struct zl3073x_dev *zldev, u8 index, u32 fields,
 			 const struct zl3073x_mb_ref *mb)
 {
 	int rc = 0;
+
+	guard(mutex)(&zldev->mb_ref_lock);
 
 	if (fields & ZL3073X_MB_REF_FREQ_BASE)
 		rc = zl3073x_write_reg(zldev, ZL_REG_REF_FREQ_BASE,
@@ -996,6 +1000,12 @@ int zl3073x_dev_probe(struct zl3073x_dev *zldev,
 	if (rc)
 		return dev_err_probe(zldev->dev, rc,
 				     "Failed to init DPLL mailbox mutex\n");
+
+	/* Initialize ref mailbox mutex */
+	rc = devm_mutex_init(zldev->dev, &zldev->mb_ref_lock);
+	if (rc)
+		return dev_err_probe(zldev->dev, rc,
+				     "Failed to init ref mailbox mutex\n");
 
 	/* Fetch device state */
 	rc = zl3073x_dev_state_fetch(zldev);

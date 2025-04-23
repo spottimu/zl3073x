@@ -58,6 +58,7 @@ struct zl3073x_synth {
  * @regmap: regmap to access device registers
  * @clock_id: clock id of the device
  * @mb_dpll_lock: mutex to protect DPLL mailbox
+ * @mb_ref_lock: mutex to protect reference mailbox
  * @input: array of inputs' invariants
  * @output: array of outputs' invariants
  * @synth: array of synthesizers' invariants
@@ -67,6 +68,7 @@ struct zl3073x_dev {
 	struct regmap		*regmap;
 	u64			clock_id;
 	struct mutex		mb_dpll_lock;
+	struct mutex		mb_ref_lock;
 
 	/* Invariants */
 	struct zl3073x_input	input[ZL3073X_NUM_INPUTS];
