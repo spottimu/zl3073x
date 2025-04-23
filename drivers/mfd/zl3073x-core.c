@@ -283,6 +283,8 @@ int zl3073x_mb_dpll_read(struct zl3073x_dev *zldev, u8 index, u32 fields,
 {
 	int i, rc;
 
+	guard(mutex)(&zldev->mb_dpll_lock);
+
 	rc = zl3073x_mb_cmd_do(zldev, ZL_REG_DPLL_MB_SEM, ZL_DPLL_MB_SEM_RD,
 			       ZL_REG_DPLL_MB_MASK, BIT(index));
 	if (rc)
@@ -316,6 +318,8 @@ int zl3073x_mb_dpll_write(struct zl3073x_dev *zldev, u8 index, u32 fields,
 			  struct zl3073x_mb_dpll *mb)
 {
 	int i, rc;
+
+	guard(mutex)(&zldev->mb_dpll_lock);
 
 	for (i = 0; i < ZL3073X_NUM_INPUTS; i++) {
 		if (fields & BIT(i)) {
@@ -986,6 +990,12 @@ int zl3073x_dev_probe(struct zl3073x_dev *zldev,
 
 	/* Use chip ID and given dev ID as clock ID */
 	zldev->clock_id = ((u64)id << 8) | dev_id;
+
+	/* Initialize DPLL mailbox mutex */
+	rc = devm_mutex_init(zldev->dev, &zldev->mb_dpll_lock);
+	if (rc)
+		return dev_err_probe(zldev->dev, rc,
+				     "Failed to init DPLL mailbox mutex\n");
 
 	/* Fetch device state */
 	rc = zl3073x_dev_state_fetch(zldev);
