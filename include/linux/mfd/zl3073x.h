@@ -67,6 +67,14 @@ struct zl3073x_dev {
 	struct zl3073x_synth	synth[ZL3073X_NUM_SYNTHS];
 };
 
+/*****************************
+ * Simple registers operations
+ *****************************/
+
+int zl3073x_read_reg(struct zl3073x_dev *zldev, unsigned int reg, void *val);
+int zl3073x_write_reg(struct zl3073x_dev *zldev, unsigned int reg,
+		      const void *val);
+
 /*************************
  * DPLL mailbox operations
  *************************/

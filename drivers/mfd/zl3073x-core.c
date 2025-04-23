@@ -121,8 +121,18 @@ static const struct regmap_config zl3073x_regmap_config = {
 	.volatile_reg	= zl3073x_is_volatile_reg,
 };
 
-static int
-zl3073x_read_reg(struct zl3073x_dev *zldev, unsigned int reg, void *val)
+/**
+ * zl3073x_read_reg - read device register
+ * @zldev: pointer to zl3073x device
+ * @reg: register to read
+ * @val: place to store register value
+ *
+ * Reads value of register @reg and store it into @val. A caller should use
+ * for @reg a value computed by one of ZL_REG_* macros.
+ *
+ * Returns: 0 on success, <0 on error
+ */
+int zl3073x_read_reg(struct zl3073x_dev *zldev, unsigned int reg, void *val)
 {
 	unsigned int len;
 	u8 buf[6];
@@ -171,9 +181,21 @@ zl3073x_read_reg(struct zl3073x_dev *zldev, unsigned int reg, void *val)
 
 	return rc;
 }
+EXPORT_SYMBOL_NS_GPL(zl3073x_read_reg, "ZL3073X");
 
-static int
-zl3073x_write_reg(struct zl3073x_dev *zldev, unsigned int reg, const void *val)
+/**
+ * zl3073x_write_reg - write value to device register
+ * @zldev: pointer to zl3073x device
+ * @reg: register to write
+ * @val: pointer to value to write
+ *
+ * Writes given value to register @reg. A caller should use for @reg a value
+ * computed by one of ZL_REG_* macros.
+ *
+ * Returns: 0 on success, <0 on error
+ */
+int zl3073x_write_reg(struct zl3073x_dev *zldev, unsigned int reg,
+		      const void *val)
 {
 	unsigned int len;
 	u8 buf[6];
@@ -220,6 +242,7 @@ zl3073x_write_reg(struct zl3073x_dev *zldev, unsigned int reg, const void *val)
 
 	return rc;
 }
+EXPORT_SYMBOL_NS_GPL(zl3073x_write_reg, "ZL3073X");
 
 static int
 zl3073x_mb_cmd_do(struct zl3073x_dev *zldev, unsigned int cmd_reg, u8 cmd,
