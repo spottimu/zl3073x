@@ -14,12 +14,35 @@
 #define ZL_REG_FW_VER				ZL_REG(0, 0x05, 2)
 #define ZL_REG_CUSTOM_CONFIG_VER		ZL_REG(0, 0x07, 4)
 
+/*************************
+ * Register Page 2, Status
+ *************************/
+
+#define ZL_REG_REF_FREQ(_idx)						\
+	ZL_REG_IDX(_idx, 2, 0x44, 4, ZL3073X_NUM_INPUTS, 4)
+
 /**********************
  * Register Page 4, Ref
  **********************/
 
 #define ZL_REG_REF_PHASE_ERR_READ_RQST		ZL_REG(4, 0x0f, 1)
 #define ZL_REF_PHASE_ERR_READ_RQST_RD		BIT(0)
+
+#define ZL_REG_REF_FREQ_MEAS_CTRL		ZL_REG(4, 0x1c, 1)
+#define ZL_REF_FREQ_MEAS_CTRL_			GENMASK(1, 0)
+#define ZL_REF_FREQ_MEAS_CTRL_REF_FREQ		1
+#define ZL_REF_FREQ_MEAS_CTRL_REF_FREQ_OFF	2
+#define ZL_REF_FREQ_MEAS_CTRL_DPLL_FREQ_OFF	3
+
+#define ZL_REG_REF_FREQ_MEAS_MASK_3_0		ZL_REG(4, 0x1d, 1)
+#define ZL_REF_FREQ_MEAS_MASK_3_0(_ref)		BIT(_ref)
+
+#define ZL_REG_REF_FREQ_MEAS_MASK_4		ZL_REG(4, 0x1e, 1)
+#define ZL_REF_FREQ_MEAS_MASK_4(_ref)		BIT((_ref) - 8)
+
+#define ZL_REG_DPLL_MEAS_REF_FREQ_CTRL		ZL_REG(4, 0x1f, 1)
+#define ZL_DPLL_MEAS_REF_FREQ_CTRL_EN		BIT(0)
+#define ZL_DPLL_MEAS_REF_FREQ_CTRL_IDX		GENMASK(6, 4)
 
 #define ZL_REG_REF_PHASE(_idx)						\
 	ZL_REG_IDX(_idx, 4, 0x20, 6, ZL3073X_NUM_INPUTS, 6)

@@ -58,6 +58,7 @@ struct zl3073x_synth {
  * @regmap: regmap to access device registers
  * @clock_id: clock id of the device
  * @mb_dpll_lock: mutex to protect DPLL mailbox
+ * @mb_freq_meas_lock: mutex to protect frequency offset measurement mailbox
  * @mb_phase_meas_lock: mutex to protect phase measurement mailbox
  * @mb_ref_lock: mutex to protect reference mailbox
  * @input: array of inputs' invariants
@@ -69,6 +70,7 @@ struct zl3073x_dev {
 	struct regmap		*regmap;
 	u64			clock_id;
 	struct mutex		mb_dpll_lock;
+	struct mutex		mb_freq_meas_lock;
 	struct mutex		mb_phase_meas_lock;
 	struct mutex		mb_ref_lock;
 
@@ -107,6 +109,21 @@ int zl3073x_mb_dpll_read(struct zl3073x_dev *zldev, u8 index, u32 fields,
 			 struct zl3073x_mb_dpll *mb);
 int zl3073x_mb_dpll_write(struct zl3073x_dev *zldev, u8 index, u32 fields,
 			  struct zl3073x_mb_dpll *mb);
+
+/******************************************
+ * Frequency measurement mailbox operations
+ ******************************************/
+
+/**
+ * struct zl3073x_mb_freq_meas - Frequency measurement mailbox
+ * @ref_freq_off: array of input reference frequency offsets
+ */
+struct zl3073x_mb_freq_meas {
+	u32	ref_freq_off[ZL3073X_NUM_INPUTS];
+};
+
+int zl3073x_mb_freq_meas_do(struct zl3073x_dev *zldev, u8 dpll_id,
+			    struct zl3073x_mb_freq_meas *mb);
 
 /**************************************
  * Phase measurement mailbox operations

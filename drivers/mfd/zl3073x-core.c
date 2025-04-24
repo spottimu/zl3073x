@@ -425,6 +425,60 @@ int zl3073x_mb_output_write(struct zl3073x_dev *zldev, u8 index, u32 fields,
 EXPORT_SYMBOL_NS_GPL(zl3073x_mb_output_write, "ZL3073X");
 
 /**
+ * zl3073x_mb_freq_meas_do - perform DPLL-to-refs phase measurement
+ * @zldev: zl3073x device pointer
+ * @dpll_id: DPLL channel id
+ * @mb: mailbox to store measured phases
+ *
+ * Performs DPLL to all references phase measurement and store the results
+ * into given mailbox.
+ *
+ * Return: 0 on success, <0 on error
+ */
+int zl3073x_mb_freq_meas_do(struct zl3073x_dev *zldev, u8 dpll_id,
+			    struct zl3073x_mb_freq_meas *mb)
+{
+	u8 meas_ctrl, ref_mask;
+	int i, rc;
+
+	guard(mutex)(&zldev->mb_freq_meas_lock);
+
+	/* Select all references for measurement */
+	ref_mask = GENMASK(7, 0); /* REF0P..REF3N */
+	rc = zl3073x_write_reg(zldev, ZL_REG_REF_FREQ_MEAS_MASK_3_0, &ref_mask);
+	if (rc)
+		return rc;
+	ref_mask = GENMASK(1, 0); /* REF4P..REF4N */
+	rc = zl3073x_write_reg(zldev, ZL_REG_REF_FREQ_MEAS_MASK_4, &ref_mask);
+	if (rc)
+		return rc;
+
+	/* Compute mask value for do-op.
+	 * value = DPLL index for measurement and enable measurementi
+	 */
+	meas_ctrl = FIELD_PREP(ZL_DPLL_MEAS_REF_FREQ_CTRL_IDX, dpll_id) |
+		ZL_DPLL_MEAS_REF_FREQ_CTRL_EN;
+
+	/* Perform measurement */
+	rc = zl3073x_mb_cmd_do(zldev, ZL_REG_REF_FREQ_MEAS_CTRL,
+			       ZL_REF_FREQ_MEAS_CTRL_DPLL_FREQ_OFF,
+			       ZL_REG_DPLL_MEAS_REF_FREQ_CTRL, meas_ctrl);
+	if (rc)
+		return rc;
+
+	/* Read DPLL-to-REFx frequency offset measurements */
+	for (i = 0; i < ZL3073X_NUM_INPUTS; i++) {
+		rc = zl3073x_read_reg(zldev, ZL_REG_REF_FREQ(i),
+				      &mb->ref_freq_off[i]);
+		if (rc)
+			break;
+	}
+
+	return rc;
+}
+EXPORT_SYMBOL_NS_GPL(zl3073x_mb_freq_meas_do, "ZL3073X");
+
+/**
  * zl3073x_mb_phase_meas_do - perform DPLL-to-refs phase measurement
  * @zldev: zl3073x device pointer
  * @dpll_id: DPLL channel id
@@ -1050,6 +1104,11 @@ int zl3073x_dev_probe(struct zl3073x_dev *zldev,
 		return dev_err_probe(zldev->dev, rc,
 				     "Failed to init DPLL mailbox mutex\n");
 
+	/* Initialize frequency measurement mailbox mutex */
+	rc = devm_mutex_init(zldev->dev, &zldev->mb_freq_meas_lock);
+	if (rc)
+		return dev_err_probe(zldev->dev, rc,
+				     "Failed to init freq meas mailbox mutex\n");
 	/* Initialize phase measurement mailbox mutex */
 	rc = devm_mutex_init(zldev->dev, &zldev->mb_phase_meas_lock);
 	if (rc)
