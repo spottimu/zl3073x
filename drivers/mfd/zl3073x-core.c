@@ -506,9 +506,8 @@ void zl3073x_dev_init_regmap_config(struct regmap_config *regmap_cfg)
 }
 EXPORT_SYMBOL_NS_GPL(zl3073x_dev_init_regmap_config, "ZL3073X");
 
-static int
-zl3073x_mb_op(struct zl3073x_dev *zldev, unsigned int op_reg, u8 op_val,
-	      unsigned int mask_reg, u16 mask_val)
+int zl3073x_mb_op(struct zl3073x_dev *zldev, unsigned int op_reg, u8 op_val,
+		  unsigned int mask_reg, u16 mask_val)
 {
 	int rc;
 
@@ -525,6 +524,7 @@ zl3073x_mb_op(struct zl3073x_dev *zldev, unsigned int op_reg, u8 op_val,
 	/* Wait for the operation to actually finish */
 	return zl3073x_poll_zero_u8(zldev, op_reg, op_val);
 }
+EXPORT_SYMBOL_NS_GPL(zl3073x_mb_op, "ZL3073X");
 
 /**
  * zl3073x_input_state_fetch - get input state
