@@ -23,6 +23,7 @@
 
 #define ZL3073X_DPLL_REF_NONE		ZL3073X_NUM_INPUT_PINS
 #define ZL3073X_DPLL_REF_IS_VALID(_ref)	((_ref) != ZL3073X_DPLL_REF_NONE)
+#define ZL3073X_DPLL_PHASE_OFFSET_MASK	(~0ULL << 12)
 
 /**
  * struct zl3073x_dpll_pin_info - DPLL pin info
@@ -2538,7 +2539,8 @@ zl3073x_dpll_periodic_work(struct kthread_work *work)
 			pin_changed = true;
 		}
 
-		if (ref_phase[index] != pin->phase_offset) {
+		if ((ref_phase[index] & ZL3073X_DPLL_PHASE_OFFSET_MASK) !=
+		    ((pin->phase_offset) & ZL3073X_DPLL_PHASE_OFFSET_MASK)) {
 			dev_dbg(dev,
 				"INPUT%u phase offset changed: %lld->%lld\n",
 				index, sign_extend64(pin->phase_offset, 47),
